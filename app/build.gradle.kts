@@ -35,7 +35,7 @@ chaquopy {
         // This is the embedded Python version, not the Chaquopy Gradle plugin version.
         version = "3.10"
         pip {
-            install("numpy==1.26.4")
+            install("numpy==1.26.2")
             install("nltk==3.8.1")
             install("g2p-en==2.1.0")
         }
