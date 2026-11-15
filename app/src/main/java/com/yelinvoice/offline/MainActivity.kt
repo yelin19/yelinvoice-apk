@@ -547,7 +547,7 @@ class MainActivity : Activity() {
 
     private fun renderTranscriptionPage() {
         val page = newPage()
-        addHeader(page, "အသံမှ စာသားသို့", "Whisper ကို ဖုန်းထဲတွင် အလုပ်လုပ်စေပြီး မြန်မာ/中文 အသံကို timestamp ပါသောစာသားအဖြစ် ပြောင်းပါ။")
+        addHeader(page, "အသံမှ စာသားသို့", "Whisper ကို ဖုန်းထဲတွင် အင်တာနက်မလိုဘဲ အသုံးပြုပြီး မြန်မာနှင့် တရုတ်စကားပြောကို အချိန်မှတ်တမ်းပါ စာသားအဖြစ် ပြောင်းပေးပါမည်။")
         card(page) {
             addView(label("ဘာသာစကားရွေးရန်", 16f, inkColor, true), matchWidth())
             addView(space(8), matchWidth())
@@ -556,7 +556,7 @@ class MainActivity : Activity() {
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
                 endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
             }
-            val languageLabels = listOf("မြန်မာဘာသာ", "简体中文", "繁體中文")
+            val languageLabels = listOf("မြန်မာဘာသာ", "တရုတ်စာ (ရိုးရှင်း) · 简体中文", "တရုတ်စာ (ရိုးရာ) · 繁體中文")
             val languagePicker = MaterialAutoCompleteTextView(this@MainActivity).apply {
                 inputType = android.text.InputType.TYPE_NULL
                 keyListener = null
@@ -589,7 +589,7 @@ class MainActivity : Activity() {
                 setTextIsSelectable(true)
             }, matchWidth())
             addView(space(10), matchWidth())
-            val runButton = actionButton("Offline စာသားထုတ်ယူရန်", true).apply {
+            val runButton = actionButton("အင်တာနက်မလိုဘဲ စာသားထုတ်ရန်", true).apply {
                 isEnabled = !busy
                 alpha = if (isEnabled) 1f else 0.6f
                 setOnClickListener { transcribeSelectedAudio() }
@@ -599,19 +599,19 @@ class MainActivity : Activity() {
         }
 
         card(page) {
-            addView(label("Whisper model", 15f, inkColor, true), matchWidth())
+            addView(label("Whisper အသံမှတ်သားစနစ်", 15f, inkColor, true), matchWidth())
             addView(space(4), matchWidth())
             val ready = OfflineWhisperModelRepository(this@MainActivity).installed()
-            addView(label(if (ready) "Tiny multilingual model · суусан · offline ашиглахад бэлэн" else "Tiny multilingual model · ойролцоогоор 74 MiB · эхний удаа татна", 12f, if (ready) primaryColor else mutedColor), matchWidth())
+            addView(label(if (ready) "ဘာသာစကားစုံသုံး မော်ဒယ်အသေး · ထည့်သွင်းပြီး · အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ" else "ဘာသာစကားစုံသုံး မော်ဒယ်အသေး · 74 MiB ခန့် · ပထမဆုံးအကြိမ် ဒေါင်းလုဒ်လုပ်ပါမည်", 12f, if (ready) primaryColor else mutedColor), matchWidth())
             addView(space(6), matchWidth())
-            addView(label("Model суусны дараа Whisper боловсруулалт төхөөрөмж дээр offline хийгдэнэ. Tiny model-ийн Burmese танилтын нарийвчлал аудио чанараас шалтгаалан өөр байж болно.", 12f, mutedColor), matchWidth())
+            addView(label("မော်ဒယ်ဒေါင်းလုဒ်ပြီးပါက အသံမှတ်သားခြင်းကို ဖုန်းထဲတွင်ပင် အင်တာနက်မလိုဘဲ လုပ်ဆောင်ပါမည်။ မော်ဒယ်အသေးဖြစ်သောကြောင့် မြန်မာစကားသိရှိမှု တိကျမှုသည် အသံအရည်အသွေးအပေါ် မူတည်နိုင်ပါသည်။", 12f, mutedColor), matchWidth())
         }
 
         card(page) {
-            addView(label("Timestamp-тай transcript", 16f, inkColor, true), matchWidth())
+            addView(label("အချိန်မှတ်တမ်းပါ စာသားရလဒ်", 16f, inkColor, true), matchWidth())
             addView(space(8), matchWidth())
             val outputLayout = TextInputLayout(this@MainActivity).apply {
-                hint = "Транскрипцийн үр дүн"
+                hint = "ထုတ်ယူထားသော စာသား"
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
             }
             val outputCount = label("${transcriptionOutput.length} / 10,000", 12f, mutedColor).apply {
@@ -642,9 +642,22 @@ class MainActivity : Activity() {
             addView(outputLayout, matchWidth())
             addView(outputCount, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)))
             addView(space(8), matchWidth())
-            addView(actionButton("Timestamp dubbing ထဲပို့ရန်", false).apply {
+            addView(actionButton("စာသားကို ကူးယူရန်", false).apply {
                 setOnClickListener {
-                    if (transcriptionOutput.isBlank()) toast("ပို့ရန် transcript မရှိသေးပါ။")
+                    val script = transcriptionOutput.trim()
+                    if (script.isBlank()) {
+                        toast("ကူးယူရန် စာသားရလဒ် မရှိသေးပါ။")
+                    } else {
+                        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Yelinvoice transcript", script))
+                        toast("စာသားကို clipboard သို့ ကူးယူပြီးပါပြီ။")
+                    }
+                }
+            }, matchWidth())
+            addView(space(8), matchWidth())
+            addView(actionButton("အချိန်အလိုက် အသံထုတ်ရန် စာမျက်နှာသို့ ပို့ရန်", false).apply {
+                setOnClickListener {
+                    if (transcriptionOutput.isBlank()) toast("ပို့ရန် စာသားရလဒ် မရှိသေးပါ။")
                     else {
                         draftText = transcriptionOutput
                         navigation.selectedItemId = TAB_TIMESTAMP
@@ -671,14 +684,14 @@ class MainActivity : Activity() {
     private fun transcribeSelectedAudio() {
         val uri = transcriptionUri
         if (uri == null) {
-            toast("Эхлээд аудио файл сонгоно уу.")
+            toast("အသံဖိုင်ကို အရင်ရွေးချယ်ပါ။")
             return
         }
         if (busy) return
         val language = selectedTranscriptionLanguage
         val script = selectedChineseScript
         busy = true
-        transcriptionStatus = "Whisper model болон аудио бэлтгэж байна…"
+        transcriptionStatus = "Whisper မော်ဒယ်နှင့် အသံဖိုင်ကို ပြင်ဆင်နေပါသည်…"
         applyBusyState()
         worker.execute {
             try {
@@ -686,13 +699,13 @@ class MainActivity : Activity() {
                     val progress = if (total > 0L) (received * 100L / total).toInt().coerceIn(1, 99) else 1
                     val downloadedMb = received / (1024.0 * 1024.0)
                     val totalMb = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
-                    mainHandler.post { updateTranscriptionStatus("Whisper model татаж байна: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%") }
+                    mainHandler.post { updateTranscriptionStatus("Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်နေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%") }
                 }
-                mainHandler.post { updateTranscriptionStatus("Аудиог decode хийж байна…") }
+                mainHandler.post { updateTranscriptionStatus("အသံဖိုင်ကို ဖတ်ရှုရန် ပြင်ဆင်နေပါသည်…") }
                 val audio = AndroidAudioDecoder.decodeMono16k(this, uri) { progress ->
-                    mainHandler.post { updateTranscriptionStatus("Аудиог 16 kHz mono болгож байна… $progress%") }
+                    mainHandler.post { updateTranscriptionStatus("အသံဖိုင်ကို မှတ်သားရန် ပြင်ဆင်နေသည်… $progress%") }
                 }
-                mainHandler.post { updateTranscriptionStatus("Whisper offline транскрипц хийж байна…") }
+                mainHandler.post { updateTranscriptionStatus("Whisper က အင်တာနက်မလိုဘဲ စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်…") }
                 val raw = OfflineWhisperTranscriber(model).use { it.transcribe(audio, language) }
                 val converted = if (language == "zh" && script == "Hant") {
                     try { android.icu.text.Transliterator.getInstance("Simplified-Traditional").transliterate(raw) }
@@ -700,13 +713,13 @@ class MainActivity : Activity() {
                 } else raw
                 mainHandler.post {
                     transcriptionOutput = converted
-                    transcriptionStatus = if (converted.isBlank()) "Яриа танигдсангүй။ Audio чанартай файлыг дахин сонгоно уу." else "Транскрипц дууслаа · ${audio.size / 16_000} сек аудио · offline"
+                    transcriptionStatus = if (converted.isBlank()) "စကားပြောသံကို မသိရှိနိုင်ပါ။ အသံအရည်အသွေးကောင်းသော ဖိုင်ကို ပြန်ရွေးပါ။" else "အသံမှစာသား ပြောင်းလဲပြီးပါပြီ · အသံကြာချိန် ${audio.size / 16_000} စက္ကန့် · အင်တာနက်မလိုပါ"
                     busy = false
                     if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
                 }
             } catch (error: Exception) {
                 mainHandler.post {
-                    transcriptionStatus = "Транскрипц амжилтгүй: ${error.message ?: "Алдаа гарлаа."}"
+                    transcriptionStatus = "အသံမှစာသား ပြောင်းလဲမရပါ: ${error.message ?: "အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။"}"
                     busy = false
                     if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
                 }
