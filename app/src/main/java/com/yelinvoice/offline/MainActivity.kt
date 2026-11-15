@@ -858,15 +858,20 @@ class MainActivity : Activity() {
                     lastOutput = record
                     busy = false
                     setSpeechProgress(100, if (timestampModeForJob) "Timestamp အလိုက် အသံတစ်ဖိုင်တည်း ဖန်တီးပြီးပါပြီ။ 100%" else "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
-                    if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) renderCreatePage()
-                    else if (currentTab == TAB_HISTORY) renderHistoryPage()
+                    if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) {
+                        navigation.selectedItemId = TAB_HISTORY
+                    } else if (currentTab == TAB_HISTORY) {
+                        renderHistoryPage()
+                    }
                     applyBusyState()
                 }
             } catch (error: Exception) {
                 temporary?.delete()
                 mainHandler.post {
                     busy = false
-                    showStatus("အသံဖိုင် ဖန်တီးမရပါ။ ${error.message ?: "အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။"}")
+                    val detail = error.message ?: error.javaClass.simpleName
+                    showStatus("အသံဖိုင် ဖန်တီးမရပါ။ $detail")
+                    toast("အသံဖိုင် ဖန်တီးမရပါ။ $detail")
                     applyBusyState()
                     if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) renderCreatePage()
                 }
