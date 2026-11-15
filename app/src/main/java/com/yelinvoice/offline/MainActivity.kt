@@ -356,11 +356,9 @@ class MainActivity : Activity() {
             addView(resizeHandle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
             if (timestampMode) {
                 addView(space(8), matchWidth())
-                addView(label("စာကြောင်းတစ်ကြောင်းစီကို [00:00 - 00:03] စာသား ပုံစံဖြင့်ရေးပါ။ အချိန်ကွက်လပ်များတွင် တိတ်ဆိတ်နေမည်ဖြစ်ပြီး၊ အသံရှည်ပါက စကားလုံးမဖြတ်ဘဲ pitch မပြောင်းဘဲ အမြန်နှုန်းညှိပေးပါမည်။", 12f, mutedColor), matchWidth())
+                addView(label("စာကြောင်းတစ်ကြောင်းစီကို [00:00 - 00:03] စာသား ပုံစံဖြင့်ရေးပါ။ အသံကို သတ်မှတ်ထားသော စတင်ချိန်တွင် သဘာဝအမြန်နှုန်းအတိုင်း ထည့်ပြီး WAV တစ်ဖိုင်တည်း ထုတ်ပေးပါမည်။ အသံရှည်ပါက မမြန်စေဘဲ နောက်ဆုံးဖိုင်ကြာချိန်ကို တိုးပေးမည်။", 12f, mutedColor), matchWidth())
             }
         }
-
-        if (timestampMode) addTimestampSpeedControl(page)
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -829,7 +827,6 @@ class MainActivity : Activity() {
                             transcript = text,
                             engine = engine,
                             outputFile = temporary!!,
-                            speedFactorProvider = { timestampSpeedFactor }
                         ) { percent, message -> mainHandler.post { setSpeechProgress(percent, message) } }
                     } else {
                         engine.synthesize(text, temporary!!) { percent ->

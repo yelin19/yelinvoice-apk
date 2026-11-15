@@ -75,10 +75,10 @@ object TimestampTranscriptParser {
 }
 
 /**
- * Renders timestamped speech onto a silent 24 kHz mono WAV timeline.
- * Overlong utterances are shortened with WSOLA time stretching, which changes
- * duration while preserving pitch. Words are never cut off. Unused portions of
- * each slot and all gaps between slots stay silent.
+ * Renders timestamped speech onto one silent 24 kHz mono WAV timeline.
+ * Each utterance starts at its timestamp and keeps its natural TTS speed and
+ * full duration. If it runs longer than its slot, the output timeline extends
+ * rather than speeding up or cutting off the speech.
  */
 object TimestampDubRenderer {
     private const val SAMPLE_RATE = 24_000
@@ -158,55 +158,57 @@ object TimestampDubRenderer {
         transcript: String,
         engine: OfflineTtsEngine,
         outputFile: File,
-        speedFactorProvider: () -> Float = { 1.0f },
         onProgress: (Int, String) -> Unit = { _, _ -> }
     ) {
         val segments = TimestampTranscriptParser.parse(transcript)
-        val totalMs = segments.maxOf { it.endMs }
-        val totalFrames = (totalMs * SAMPLE_RATE / 1000.0).roundToInt().toLong()
-        require(totalFrames * 2L <= 0xFFFFFFFFL - 36L) { "Timestamp အသံဖိုင်သည် WAV အရွယ်အစား ကန့်သတ်ချက်ထက် ကျော်နေပါသည်။" }
         outputFile.parentFile?.mkdirs()
-        onProgress(1, "Timestamp အသံဖိုင် ပြင်ဆင်နေသည်… 1%")
-
-        RandomAccessFile(outputFile, "rw").use { timeline ->
-            timeline.setLength(0L)
-            timeline.write(wavHeader(0L))
-            timeline.setLength(WAV_HEADER_SIZE + totalFrames * 2L) // sparse/digital silence
-
+        data class RenderedPart(val segment: TimedSpeechSegment, val file: File, val startFrame: Long)
+        val parts = ArrayList<RenderedPart>(segments.size)
+        try {
+            onProgress(1, "Timestamp အသံတစ်ဖိုင်တည်းအတွက် သဘာဝအမြန်နှုန်းဖြင့် အသံထုတ်နေသည်… 1%")
             segments.forEachIndexed { index, segment ->
-                val percentBefore = (index * 100 / segments.size).coerceIn(1, 98)
-                onProgress(percentBefore, "စာကြောင်း ${index + 1}/${segments.size} ကို အသံထုတ်နေသည်… $percentBefore%")
-                val chunkFile = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}-part-$index.wav")
+                val chunk = File(outputFile.parentFile, "${outputFile.nameWithoutExtension}-part-$index.wav")
                 try {
-                    engine.synthesize(segment.text, chunkFile)
-                    var samples = readPcm16Wav(chunkFile)
-                    val slotFrames = (segment.slotMs * SAMPLE_RATE / 1000.0).roundToInt().coerceAtLeast(1)
-                    val selectedFactor = speedFactorProvider().coerceIn(1.0f, 2.0f)
-                    val factorTargetFrames = (samples.size / selectedFactor).roundToInt().coerceAtLeast(1)
-                    val targetFrames = minOf(slotFrames, factorTargetFrames)
-                    if (samples.size > targetFrames) {
-                        val originalMs = samples.size * 1000.0 / SAMPLE_RATE
-                        val speed = samples.size.toDouble() / targetFrames
-                        samples = WsolaTimeStretch.fit(samples, targetFrames)
-                        val shownSpeed = String.format(java.util.Locale.US, "%.2f×", speed)
-                        onProgress(percentBefore, "စာကြောင်း ${index + 1}: ${originalMs.toInt()} ms ကို $shownSpeed အရှိန်မြှင့်နေသည်…")
-                        require(samples.size <= slotFrames) {
-                            "စာကြောင်း ${segment.lineNumber} ကို အချိန်အတွင်း အပြည့်ထည့်မရပါ။ အသံဖြတ်မည့်အစား လုပ်ငန်းစဉ်ရပ်လိုက်သည်။"
-                        }
-                    }
+                    val percent = ((index * 45.0) / segments.size).toInt().coerceIn(1, 44)
+                    onProgress(percent, "စာကြောင်း ${index + 1}/${segments.size} ကို မူရင်းအမြန်နှုန်းအတိုင်း အသံထုတ်နေသည်… $percent%")
+                    engine.synthesize(segment.text, chunk)
+                    val sampleCount = (chunk.length() - WAV_HEADER_SIZE) / 2L
+                    require(sampleCount > 0L) { "စာကြောင်း ${segment.lineNumber} မှ အသံမထွက်လာပါ။" }
                     val startFrame = (segment.startMs * SAMPLE_RATE / 1000.0).roundToInt().toLong()
-                    mixPcm16(timeline, startFrame, samples)
-                } finally {
-                    chunkFile.delete()
+                    parts.add(RenderedPart(segment, chunk, startFrame))
+                } catch (error: Exception) {
+                    chunk.delete()
+                    throw error
                 }
-                val completed = (((index + 1) * 100.0) / segments.size).toInt().coerceIn(1, 99)
-                onProgress(completed, "Timestamp အသံ ${index + 1}/${segments.size} ပြီးပါပြီ… $completed%")
             }
-            timeline.seek(0L)
-            timeline.write(wavHeader(totalFrames * 2L))
-            timeline.fd.sync()
+
+            val requestedEndFrame = (segments.maxOf { it.endMs } * SAMPLE_RATE / 1000.0).roundToInt().toLong()
+            val speechEndFrame = parts.maxOf { part -> part.startFrame + (part.file.length() - WAV_HEADER_SIZE) / 2L }
+            val totalFrames = maxOf(requestedEndFrame, speechEndFrame)
+            require(totalFrames * 2L <= 0xFFFFFFFFL - 36L) { "Timestamp အသံဖိုင်သည် WAV အရွယ်အစား ကန့်သတ်ချက်ထက် ကျော်နေပါသည်။" }
+            onProgress(48, "သတ်မှတ်ချိန်နေရာများနှင့် အသံတိတ်ကွက်လပ်များကို WAV တစ်ဖိုင်တည်းထဲ ပေါင်းစပ်နေသည်… 48%")
+
+            RandomAccessFile(outputFile, "rw").use { timeline ->
+                timeline.setLength(0L)
+                timeline.write(wavHeader(0L))
+                timeline.setLength(WAV_HEADER_SIZE + totalFrames * 2L) // sparse/digital silence
+                parts.forEachIndexed { index, part ->
+                    val samples = readPcm16Wav(part.file)
+                    mixPcm16(timeline, part.startFrame, samples)
+                    val percent = (50 + ((index + 1) * 48.0 / parts.size)).toInt().coerceIn(50, 98)
+                    onProgress(percent, "စာကြောင်း ${index + 1}/${parts.size} ကို အချိန်နေရာတွင် ထည့်နေသည်… $percent%")
+                }
+                timeline.seek(0L)
+                timeline.write(wavHeader(totalFrames * 2L))
+                timeline.fd.sync()
+            }
+        } catch (error: Exception) {
+            outputFile.delete()
+            throw error
+        } finally {
+            parts.forEach { it.file.delete() }
         }
-        onProgress(100, "Timestamp အသံဖိုင် ပြီးပါပြီ။ 100%")
+        onProgress(100, "Timestamp အသံကို မူရင်းအမြန်နှုန်းအတိုင်း WAV တစ်ဖိုင်တည်း ဖန်တီးပြီးပါပြီ။ 100%")
     }
 
     private fun readPcm16Wav(file: File): ShortArray {
