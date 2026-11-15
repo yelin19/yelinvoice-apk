@@ -6,6 +6,10 @@ import ai.onnxruntime.OrtSession
 import com.chaquo.python.Python
 import java.io.File
 import java.io.FileOutputStream
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.OutputStream
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -20,7 +24,7 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
     private val encoder = env.createSession(model.encoder.absolutePath, options)
     private val decoder = env.createSession(model.decoder.absolutePath, options)
 
-    fun synthesize(text: String, outputFile: File) {
+    fun synthesize(text: String, outputFile: File, onProgress: (Int) -> Unit = {}) {
         require(text.isNotBlank()) { "ဖတ်ရန် မြန်မာစာသား ထည့်ပါ။" }
         val metadata = org.json.JSONObject(model.metadata.readText(Charsets.UTF_8))
         val vocabJson = metadata.getJSONObject("vocab")
@@ -28,9 +32,13 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
         val centers = metadata.getJSONArray("centers")
         val bridge = Python.getInstance().getModule("nara_bridge")
         val pieces = splitText(text)
-        val audioPieces = ArrayList<FloatArray>()
+        var dataBytes = 0L
+        outputFile.parentFile?.mkdirs()
+        onProgress(1)
 
-        for (piece in pieces) {
+        BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { output ->
+            output.write(wavHeaderBytes(0L))
+            for ((pieceIndex, piece) in pieces.withIndex()) {
             val phonemes = bridge.callAttr("phonemize_text", piece).toString()
             val ids = ArrayList<Long>()
             phonemes.codePoints().forEach { cp ->
@@ -93,18 +101,21 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
             }
             pInput.close(); tInput.close(); sInput.close()
             require(samples.size >= 2_400 && samples.all { it.isFinite() }) { "Model က အသံဖိုင်ကို မှန်ကန်စွာ မဖန်တီးနိုင်ပါ။" }
-            audioPieces.add(samples)
+                if (pieceIndex > 0) {
+                    repeat(4_800) { output.write(0); output.write(0) }
+                    dataBytes += 9_600L
+                }
+                dataBytes += writePcmSamples(output, samples)
+                require(dataBytes <= 0xFFFFFFFFL - 36L) { "ဖန်တီးမည့်အသံဖိုင်သည် WAV ဖိုင်အရွယ်အစား အများဆုံးကန့်သတ်ချက်ထက် ကြီးနေပါသည်။ စာသားကို အပိုင်းအလိုက် ဖန်တီးပါ။" }
+                val percent = (((pieceIndex + 1) * 100.0) / pieces.size).toInt().coerceIn(1, 99)
+                onProgress(percent)
+            }
         }
-
-        val totalSize = audioPieces.sumOf { it.size } + maxOf(0, audioPieces.size - 1) * 4_800
-        val joined = FloatArray(totalSize)
-        var offset = 0
-        audioPieces.forEachIndexed { index, part ->
-            if (index > 0) offset += 4_800 // 0.2 seconds of silence at 24 kHz.
-            part.copyInto(joined, offset)
-            offset += part.size
+        RandomAccessFile(outputFile, "rw").use { file ->
+            file.seek(0)
+            file.write(wavHeaderBytes(dataBytes))
         }
-        writeWav(outputFile, joined)
+        onProgress(100)
     }
 
     private fun nearestCenterIndex(centers: org.json.JSONArray, tokenCount: Int): Int {
@@ -176,26 +187,38 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
         return pieces
     }
 
-    private fun writeWav(file: File, samples: FloatArray) {
-        file.parentFile?.mkdirs()
-        val dataBytes = samples.size * 2
-        FileOutputStream(file).buffered().use { output ->
-            fun writeAscii(value: String) = output.write(value.toByteArray(Charsets.US_ASCII))
-            fun writeLeInt(value: Int) {
-                output.write(value and 0xff); output.write((value shr 8) and 0xff)
-                output.write((value shr 16) and 0xff); output.write((value shr 24) and 0xff)
-            }
-            fun writeLeShort(value: Int) { output.write(value and 0xff); output.write((value shr 8) and 0xff) }
-            writeAscii("RIFF"); writeLeInt(36 + dataBytes); writeAscii("WAVE")
-            writeAscii("fmt "); writeLeInt(16); writeLeShort(1); writeLeShort(1)
-            writeLeInt(24_000); writeLeInt(48_000); writeLeShort(2); writeLeShort(16)
-            writeAscii("data"); writeLeInt(dataBytes)
-            for (sample in samples) {
-                val clipped = sample.coerceIn(-1.0f, 1.0f)
-                val pcm = (clipped * if (clipped < 0) 32768.0f else 32767.0f).toInt()
-                writeLeShort(pcm)
+    private fun writePcmSamples(output: OutputStream, samples: FloatArray): Long {
+        val buffer = ByteArray(64 * 1024)
+        var used = 0
+        for (sample in samples) {
+            val clipped = sample.coerceIn(-1.0f, 1.0f)
+            val pcm = (clipped * if (clipped < 0) 32768.0f else 32767.0f).toInt()
+            buffer[used++] = (pcm and 0xff).toByte()
+            buffer[used++] = ((pcm shr 8) and 0xff).toByte()
+            if (used == buffer.size) {
+                output.write(buffer)
+                used = 0
             }
         }
+        if (used > 0) output.write(buffer, 0, used)
+        return samples.size * 2L
+    }
+
+    private fun wavHeaderBytes(dataBytes: Long): ByteArray {
+        val output = ByteArrayOutputStream(44)
+        fun writeAscii(value: String) = output.write(value.toByteArray(Charsets.US_ASCII))
+        fun writeLeInt(value: Long) {
+            output.write((value and 0xff).toInt())
+            output.write(((value shr 8) and 0xff).toInt())
+            output.write(((value shr 16) and 0xff).toInt())
+            output.write(((value shr 24) and 0xff).toInt())
+        }
+        fun writeLeShort(value: Int) { output.write(value and 0xff); output.write((value shr 8) and 0xff) }
+        writeAscii("RIFF"); writeLeInt(36L + dataBytes); writeAscii("WAVE")
+        writeAscii("fmt "); writeLeInt(16); writeLeShort(1); writeLeShort(1)
+        writeLeInt(24_000); writeLeInt(48_000); writeLeShort(2); writeLeShort(16)
+        writeAscii("data"); writeLeInt(dataBytes)
+        return output.toByteArray()
     }
 
     override fun close() {

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
+import android.app.ProgressDialog
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
@@ -58,9 +59,11 @@ class MainActivity : Activity() {
     private var draftText = ""
     private var playbackSpeed = 1.0f
     private var busy = false
+    private var progressPercent = 0
     private var player: MediaPlayer? = null
     private var lastOutput: AudioRecord? = null
     private var pendingExport: File? = null
+    private var downloadDialog: ProgressDialog? = null
 
     private var voicePicker: MaterialAutoCompleteTextView? = null
     private var textInput: TextInputEditText? = null
@@ -219,8 +222,6 @@ class MainActivity : Activity() {
             val textLayout = TextInputLayout(this@MainActivity).apply {
                 hint = "မြန်မာ သို့မဟုတ် English စာသား"
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-                isCounterEnabled = true
-                counterMaxLength = MAX_TEXT_LENGTH
             }
             val edit = TextInputEditText(this@MainActivity).apply {
                 setText(draftText)
@@ -279,7 +280,8 @@ class MainActivity : Activity() {
             max = 100
             progressTintList = ColorStateList.valueOf(primaryColor)
             visibility = if (busy) View.VISIBLE else View.GONE
-            isIndeterminate = busy
+            isIndeterminate = false
+            this.progress = progressPercent
         }
         progressBar = progress
         statusColumn.addView(progress, LinearLayout.LayoutParams(
@@ -459,14 +461,10 @@ class MainActivity : Activity() {
             showStatus("အသံထုတ်ရန် စာသားကို အရင်ထည့်ပါ။")
             return
         }
-        if (text.length > MAX_TEXT_LENGTH) {
-            showStatus("စာသားရှည်လွန်းပါသည်။ $MAX_TEXT_LENGTH စာလုံးအောက်ဖြစ်အောင် ခွဲထည့်ပါ။")
-            return
-        }
         val selected = modelRepository.voices.firstOrNull { it.id == selectedVoiceId }?.id
             ?: modelRepository.voices.first().id
         busy = true
-        showStatus("အသံမော်ဒယ်ကို စစ်ဆေးပြီး အသံဖိုင် ဖန်တီးနေပါသည်…")
+        setSpeechProgress(1, "အသံမော်ဒယ်ကို စစ်ဆေးပြီး အသံဖိုင် ဖန်တီးနေပါသည်… 1%")
         applyBusyState()
         worker.execute {
             var temporary: File? = null
@@ -478,17 +476,25 @@ class MainActivity : Activity() {
                     Python.getInstance().getModule("nara_bridge")
                         .callAttr("configure_english_data", nltkDirectory.absolutePath)
                 }
-                val files = modelRepository.ensureInstalled(selected) { message ->
-                    mainHandler.post { showStatus(message) }
+                val files = modelRepository.ensureInstalled(selected) { event ->
+                    val fraction = if (event.totalBytes > 0L) event.downloadedBytes.toDouble() / event.totalBytes else 0.0
+                    val percent = (((event.fileIndex - 1 + fraction) * 100.0) / event.fileCount).toInt().coerceIn(1, 99)
+                    val mb = event.downloadedBytes / (1024.0 * 1024.0)
+                    val total = if (event.totalBytes > 0L) " / ${"%.1f".format(Locale.US, event.totalBytes / (1024.0 * 1024.0))} MB" else " MB (စုစုပေါင်း အရွယ်အစားမသိ)"
+                    mainHandler.post { setSpeechProgress(percent, "${event.fileName}: ${"%.1f".format(Locale.US, mb)}$total · $percent%") }
                 }
                 temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
-                OfflineTtsEngine(files).use { engine -> engine.synthesize(text, temporary!!) }
+                OfflineTtsEngine(files).use { engine ->
+                    engine.synthesize(text, temporary!!) { percent ->
+                        mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
+                    }
+                }
                 val record = historyRepository.add(temporary!!, text, selected)
                 temporary!!.delete()
                 mainHandler.post {
                     lastOutput = record
                     busy = false
-                    showStatus("အသံဖိုင် ဖန်တီးပြီး အသံဖိုင်များ စာရင်းထဲသို့ သိမ်းထားပါပြီ။")
+                    setSpeechProgress(100, "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
                     if (currentTab == TAB_CREATE) renderCreatePage()
                     else if (currentTab == TAB_HISTORY) renderHistoryPage()
                     applyBusyState()
@@ -526,17 +532,41 @@ class MainActivity : Activity() {
         if (busy) return
         val voice = modelRepository.voices.firstOrNull { it.id == id } ?: return
         busy = true
-        toast("${voice.label} ကို ဒေါင်းလုဒ်လုပ်နေပါသည်။ Wi-Fi အသုံးပြုရန် အကြံပြုပါသည်။")
+        val dialog = ProgressDialog(this).apply {
+            setTitle("${voice.label} ဒေါင်းလုဒ်လုပ်နေသည်")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = 100
+            progress = 1
+            setCancelable(false)
+            setMessage("Model ဖိုင်များကို စစ်ဆေးနေသည်…")
+            show()
+        }
+        downloadDialog = dialog
         worker.execute {
             try {
-                modelRepository.ensureInstalled(id) { message -> mainHandler.post { toast(message) } }
+                modelRepository.ensureInstalled(id) { event ->
+                    val fraction = if (event.totalBytes > 0L) event.downloadedBytes.toDouble() / event.totalBytes else 0.0
+                    val percent = (((event.fileIndex - 1 + fraction) * 100.0) / event.fileCount).toInt().coerceIn(1, 99)
+                    val downloadedMb = event.downloadedBytes / (1024.0 * 1024.0)
+                    val sizeText = if (event.totalBytes > 0L) {
+                        "${"%.1f".format(Locale.US, downloadedMb)} / ${"%.1f".format(Locale.US, event.totalBytes / (1024.0 * 1024.0))} MB"
+                    } else "${"%.1f".format(Locale.US, downloadedMb)} MB"
+                    mainHandler.post {
+                        dialog.setMessage("${event.fileName} · $sizeText · $percent%")
+                        dialog.progress = percent
+                    }
+                }
                 mainHandler.post {
+                    dialog.dismiss()
+                    downloadDialog = null
                     busy = false
                     toast("${voice.label} ဒေါင်းလုဒ်ပြီးပါပြီ။ အင်တာနက်မလိုဘဲ အသုံးပြုနိုင်ပါသည်။")
                     if (currentTab == TAB_SETTINGS) renderSettingsPage()
                 }
             } catch (error: Exception) {
                 mainHandler.post {
+                    dialog.dismiss()
+                    downloadDialog = null
                     busy = false
                     toast("ဒေါင်းလုဒ်မအောင်မြင်ပါ။ ${error.message ?: "ကွန်ရက်ကို စစ်ဆေးပါ။"}")
                     if (currentTab == TAB_SETTINGS) renderSettingsPage()
@@ -835,6 +865,17 @@ class MainActivity : Activity() {
         statusText?.text = message
     }
 
+    private fun setSpeechProgress(percent: Int, message: String) {
+        progressPercent = percent.coerceIn(1, 100)
+        statusMessage = message
+        statusText?.text = message
+        progressBar?.apply {
+            isIndeterminate = false
+            progress = progressPercent
+            visibility = View.VISIBLE
+        }
+    }
+
     private fun applyBusyState() {
         makeButton?.isEnabled = !busy
         makeButton?.alpha = if (busy) 0.65f else 1f
@@ -843,7 +884,8 @@ class MainActivity : Activity() {
         listenButton?.isEnabled = !busy && lastOutput != null
         listenButton?.alpha = if (listenButton?.isEnabled == true) 1f else 0.55f
         progressBar?.visibility = if (busy) View.VISIBLE else View.GONE
-        progressBar?.isIndeterminate = busy
+        progressBar?.isIndeterminate = false
+        progressBar?.progress = progressPercent
     }
 
     private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
@@ -861,6 +903,8 @@ class MainActivity : Activity() {
     private fun wrapWidth() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
     override fun onDestroy() {
+        downloadDialog?.dismiss()
+        downloadDialog = null
         player?.release()
         player = null
         worker.shutdownNow()
@@ -873,7 +917,6 @@ class MainActivity : Activity() {
         private const val TAB_SETTINGS = 3
         private const val REQUEST_EXPORT_AUDIO = 601
         private const val REQUEST_IMPORT_CATALOG = 602
-        private const val MAX_TEXT_LENGTH = 2_000
         private const val MAX_CATALOG_BYTES = 512 * 1024
     }
 }

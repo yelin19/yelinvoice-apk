@@ -18,6 +18,13 @@ class VoiceModelRepository(context: Context) {
     private val imported = linkedMapOf<String, Pack>()
 
     data class Voice(val id: String, val label: String, val repository: String, val revision: String)
+    data class DownloadProgress(
+        val fileName: String,
+        val downloadedBytes: Long,
+        val totalBytes: Long,
+        val fileIndex: Int,
+        val fileCount: Int
+    )
     data class ModelFiles(val folder: File) {
         val encoder: File get() = File(folder, "encoder.onnx")
         val decoder: File get() = File(folder, "decoder.onnx")
@@ -64,11 +71,10 @@ class VoiceModelRepository(context: Context) {
     }
 
     @Synchronized
-    fun ensureInstalled(id: String, onProgress: (String) -> Unit = {}): ModelFiles {
+    fun ensureInstalled(id: String, onProgress: (DownloadProgress) -> Unit = {}): ModelFiles {
         val pack = packFor(id)
         val files = filesFor(id)
         if (installed(id)) {
-            onProgress("${pack.voice.label} ကို ဖုန်းထဲမှာ သိမ်းထားပြီးပါပြီ။ အင်တာနက်မလိုဘဲ အသုံးပြုနိုင်ပါတယ်။")
             return files
         }
         if (!files.folder.exists() && !files.folder.mkdirs()) throw IllegalStateException("အသံဖိုင်သိမ်းဆည်းရန် ဖိုင်တွဲဖန်တီးမရပါ။")
@@ -81,9 +87,15 @@ class VoiceModelRepository(context: Context) {
                 destination.delete()
                 val partial = File(files.folder, "$name.part")
                 partial.delete()
-                onProgress("${pack.voice.label} — $name ဒေါင်းလုဒ်လုပ်နေပါသည်…")
                 try {
-                    download(hfResolveUrl(pack.voice.repository, pack.voice.revision, source.path), partial)
+                    download(
+                        hfResolveUrl(pack.voice.repository, pack.voice.revision, source.path),
+                        partial,
+                        name,
+                        ordered.indexOf(name) + 1,
+                        ordered.size,
+                        onProgress
+                    )
                     if (!sha256(partial).equals(source.sha256, true)) throw IllegalStateException("ဒေါင်းလုဒ်လုပ်ထားသော $name ဖိုင်၏ SHA-256 စစ်ဆေးမှု မအောင်မြင်ပါ။")
                     if (!partial.renameTo(destination)) throw IllegalStateException("ဒေါင်းလုဒ်လုပ်ထားသော $name ဖိုင်ကို သိမ်းဆည်းမရပါ။")
                 } finally { partial.delete() }
@@ -98,7 +110,6 @@ class VoiceModelRepository(context: Context) {
             if (e is IllegalStateException && e.message?.contains("SHA-256") == true) throw e
             throw IllegalStateException("${pack.voice.label} အသံဖိုင်များကို ဒေါင်းလုဒ်လုပ်၍ မရပါ: ${e.message ?: "ကွန်ရက်အမှား"}", e)
         }
-        onProgress("${pack.voice.label} ဒေါင်းလုဒ်ပြီး စစ်ဆေးပြီးပါပြီ။ အင်တာနက်မလိုဘဲ အသုံးပြုနိုင်ပါတယ်။")
         return files
     }
 
@@ -189,7 +200,14 @@ class VoiceModelRepository(context: Context) {
     private fun packForOrNull(id: String): Pack? = synchronized(this) { imported[id] ?: bundled[id] }
     private fun expectedMarker(pack: Pack) = "${pack.voice.repository}\n${pack.voice.revision}\n" + pack.files.toSortedMap().entries.joinToString("\n") { "${it.key}:${it.value.path}:${it.value.sha256}" }
 
-    private fun download(urlText: String, destination: File) {
+    private fun download(
+        urlText: String,
+        destination: File,
+        fileName: String,
+        fileIndex: Int,
+        fileCount: Int,
+        onProgress: (DownloadProgress) -> Unit
+    ) {
         val url = URL(urlText)
         require(url.protocol == "https") { "HTTPS သာ ခွင့်ပြုပါသည်။" }
         val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -199,8 +217,21 @@ class VoiceModelRepository(context: Context) {
         try {
             val status = connection.responseCode
             if (status !in 200..299) throw IllegalStateException("ဖိုင်ဒေါင်းလုဒ်မရပါ (HTTP $status)။")
+            val totalBytes = connection.contentLengthLong
+            var downloadedBytes = 0L
+            onProgress(DownloadProgress(fileName, 0L, totalBytes, fileIndex, fileCount))
             BufferedInputStream(connection.inputStream, 128 * 1024).use { input ->
-                FileOutputStream(destination).buffered(128 * 1024).use { output -> input.copyTo(output, 128 * 1024); output.flush() }
+                FileOutputStream(destination).buffered(128 * 1024).use { output ->
+                    val buffer = ByteArray(128 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        downloadedBytes += count
+                        onProgress(DownloadProgress(fileName, downloadedBytes, totalBytes, fileIndex, fileCount))
+                    }
+                    output.flush()
+                }
             }
         } finally { connection.disconnect() }
     }
