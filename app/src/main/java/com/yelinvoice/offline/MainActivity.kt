@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private var currentTab = TAB_CREATE
     private var selectedVoiceId = "shoon"
     private var draftText = ""
+    private var timestampMode = false
     private var playbackSpeed = 1.0f
     private var busy = false
     private var progressPercent = 0
@@ -71,6 +72,7 @@ class MainActivity : Activity() {
     private var listenButton: MaterialButton? = null
     private var statusText: TextView? = null
     private var progressBar: ProgressBar? = null
+    private var formatModeButton: MaterialButton? = null
     private var statusMessage = "အသံရွေးပြီး စာသားထည့်ပါ။ ပထမဆုံးအသုံးပြုချိန်တွင် voice model ဒေါင်းလုဒ်လုပ်ပါမည်။"
 
     private val prefs by lazy { getSharedPreferences("yelinvoice-settings", MODE_PRIVATE) }
@@ -154,6 +156,7 @@ class MainActivity : Activity() {
         listenButton = null
         statusText = null
         progressBar = null
+        formatModeButton = null
         when (tab) {
             TAB_HISTORY -> renderHistoryPage()
             TAB_SETTINGS -> renderSettingsPage()
@@ -217,10 +220,23 @@ class MainActivity : Activity() {
         }
 
         card(page) {
-            addView(label("ဖတ်စေလိုသော စာသား", 16f, inkColor, true), matchWidth())
+            addView(label(if (timestampMode) "Timestamp ဖြင့် အသံထုတ်ရန်" else "ဖတ်စေလိုသော စာသား", 16f, inkColor, true), matchWidth())
             addView(space(10), matchWidth())
+            val modeButton = actionButton(
+                if (timestampMode) "ပုံမှန်ဖတ်မုဒ်သို့ ပြောင်းရန်" else "Timestamp dubbing မုဒ်သို့ ပြောင်းရန်",
+                filled = false
+            ).apply {
+                setOnClickListener {
+                    if (busy) return@setOnClickListener
+                    timestampMode = !timestampMode
+                    renderCreatePage()
+                }
+            }
+            formatModeButton = modeButton
+            addView(modeButton, matchWidth())
+            addView(space(8), matchWidth())
             val textLayout = TextInputLayout(this@MainActivity).apply {
-                hint = "မြန်မာ သို့မဟုတ် English စာသား"
+                hint = if (timestampMode) "[00:00 - 00:03] မြန်မာ/English စာသား" else "မြန်မာ သို့မဟုတ် English စာသား"
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
             }
             val edit = TextInputEditText(this@MainActivity).apply {
@@ -247,6 +263,10 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
             ))
             addView(textLayout, matchWidth())
+            if (timestampMode) {
+                addView(space(8), matchWidth())
+                addView(label("စာကြောင်းတစ်ကြောင်းစီကို [00:00 - 00:03] စာသား ပုံစံဖြင့်ရေးပါ။ အချိန်ကွက်လပ်များတွင် တိတ်ဆိတ်နေမည်ဖြစ်ပြီး၊ အသံရှည်ပါက စကားလုံးမဖြတ်ဘဲ pitch မပြောင်းဘဲ အမြန်နှုန်းညှိပေးပါမည်။", 12f, mutedColor), matchWidth())
+            }
         }
 
         addSpeedControl(page)
@@ -461,6 +481,15 @@ class MainActivity : Activity() {
             showStatus("အသံထုတ်ရန် စာသားကို အရင်ထည့်ပါ။")
             return
         }
+        if (timestampMode) {
+            try {
+                TimestampTranscriptParser.parse(text)
+            } catch (error: Exception) {
+                showStatus(error.message ?: "Timestamp စာသားပုံစံကို စစ်ဆေးပါ။")
+                return
+            }
+        }
+        val timestampModeForJob = timestampMode
         val selected = modelRepository.voices.firstOrNull { it.id == selectedVoiceId }?.id
             ?: modelRepository.voices.first().id
         busy = true
@@ -485,8 +514,14 @@ class MainActivity : Activity() {
                 }
                 temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
                 OfflineTtsEngine(files).use { engine ->
-                    engine.synthesize(text, temporary!!) { percent ->
-                        mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
+                    if (timestampModeForJob) {
+                        TimestampDubRenderer.render(text, engine, temporary!!) { percent, message ->
+                            mainHandler.post { setSpeechProgress(percent, message) }
+                        }
+                    } else {
+                        engine.synthesize(text, temporary!!) { percent ->
+                            mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
+                        }
                     }
                 }
                 val record = historyRepository.add(temporary!!, text, selected)
@@ -881,6 +916,7 @@ class MainActivity : Activity() {
         makeButton?.alpha = if (busy) 0.65f else 1f
         voicePicker?.isEnabled = !busy
         textInput?.isEnabled = !busy
+        formatModeButton?.isEnabled = !busy
         listenButton?.isEnabled = !busy && lastOutput != null
         listenButton?.alpha = if (listenButton?.isEnabled == true) 1f else 0.55f
         progressBar?.visibility = if (busy) View.VISIBLE else View.GONE
