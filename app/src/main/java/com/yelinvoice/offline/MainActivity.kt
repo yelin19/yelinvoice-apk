@@ -63,6 +63,9 @@ class MainActivity : Activity() {
     private var busy = false
     private var progressPercent = 0
     private var player: MediaPlayer? = null
+    private var playbackFile: File? = null
+    private var playbackControlButton: MaterialButton? = null
+    private var playbackPrepared = false
     private var lastOutput: AudioRecord? = null
     private var pendingExport: File? = null
     private var downloadDialog: ProgressDialog? = null
@@ -446,9 +449,10 @@ class MainActivity : Activity() {
             addView(space(12), matchWidth())
 
             val firstRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
-            firstRow.addView(actionButton("နားထောင်", false).apply {
-                setOnClickListener { playAudio(record.file, playbackProgress, playbackTime) }
-            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            val playButton = actionButton("နားထောင်", false).apply {
+                setOnClickListener { playAudio(record.file, playbackProgress, playbackTime, this) }
+            }
+            firstRow.addView(playButton, LinearLayout.LayoutParams(0, dp(46), 1f))
             firstRow.addView(spaceWidth(8), LinearLayout.LayoutParams(dp(8), 1))
             firstRow.addView(actionButton("ဖုန်းထဲသိမ်း", false).apply {
                 setOnClickListener { exportAudio(record.file) }
@@ -1068,16 +1072,38 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun playAudio(file: File, progressBar: ProgressBar? = null, timeLabel: TextView? = null) {
+    private fun playAudio(
+        file: File,
+        progressBar: ProgressBar? = null,
+        timeLabel: TextView? = null,
+        controlButton: MaterialButton? = null
+    ) {
         if (!file.isFile) {
             toast("အသံဖိုင်ကို ရှာမတွေ့ပါ။")
             return
         }
         try {
+            if (playbackFile == file && player != null && playbackPrepared) {
+                val active = player!!
+                if (active.isPlaying) {
+                    active.pause()
+                    controlButton?.text = "ဆက်ဖွင့်"
+                    stopPlaybackProgress()
+                } else {
+                    active.start()
+                    controlButton?.text = "ခဏရပ်"
+                    updatePlaybackProgress(active)
+                }
+                return
+            }
             stopPlaybackProgress()
+            playbackControlButton?.text = "နားထောင်"
             player?.release()
             previewFile?.takeIf { it != file }?.delete()
             if (previewFile != file) previewFile = null
+            playbackFile = file
+            playbackControlButton = controlButton
+            playbackPrepared = false
             playbackProgressBar = progressBar
             playbackTimeLabel = timeLabel
             progressBar?.progress = 0
@@ -1096,6 +1122,8 @@ class MainActivity : Activity() {
                     }
                 } catch (_: Exception) { }
                 media.start()
+                playbackPrepared = true
+                playbackControlButton?.text = "ခဏရပ်"
                 updatePlaybackProgress(media)
             }
             next.setOnCompletionListener { media ->
@@ -1104,6 +1132,10 @@ class MainActivity : Activity() {
                 playbackTimeLabel?.text = "${formatPlaybackTime(media.duration)} / ${formatPlaybackTime(media.duration)}"
                 media.release()
                 if (player === media) player = null
+                playbackControlButton?.text = "နားထောင်"
+                playbackControlButton = null
+                playbackFile = null
+                playbackPrepared = false
                 if (previewFile == file) {
                     file.delete()
                     previewFile = null
@@ -1115,6 +1147,10 @@ class MainActivity : Activity() {
                 stopPlaybackProgress()
                 media.release()
                 if (player === media) player = null
+                playbackControlButton?.text = "နားထောင်"
+                playbackControlButton = null
+                playbackFile = null
+                playbackPrepared = false
                 if (previewFile == file) {
                     file.delete()
                     previewFile = null
@@ -1131,6 +1167,10 @@ class MainActivity : Activity() {
         } catch (error: Exception) {
             player?.release()
             player = null
+            playbackControlButton?.text = "နားထောင်"
+            playbackControlButton = null
+            playbackFile = null
+            playbackPrepared = false
             toast("အသံဖိုင်ကို ဖွင့်မရပါ။ ${error.message ?: ""}")
         }
     }
