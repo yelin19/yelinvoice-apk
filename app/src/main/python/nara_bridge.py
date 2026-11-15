@@ -101,7 +101,10 @@ def _english_to_ipa(text):
     dictionary = _english_g2p()
     output = []
     for token in _ENGLISH_TOKENS.findall(text):
-        if not token or not token[0].isalpha():
+        # Python considers Myanmar letters alphabetic too. Only Latin-starting
+        # tokens should enter the English dictionary/spelling fallback; retain
+        # every Burmese script run in place in mixed-language sentences.
+        if not token or not re.match(r"[A-Za-z]", token):
             output.append("".join(_PUNCT.get(character, character) for character in token))
             continue
 
