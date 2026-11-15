@@ -12,8 +12,8 @@ android {
         applicationId = "com.yelinvoice.offline"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -34,9 +34,16 @@ chaquopy {
     defaultConfig {
         // This is the embedded Python version, not the Chaquopy Gradle plugin version.
         version = "3.10"
+        pip {
+            install("numpy==1.26.4")
+            install("nltk==3.8.1")
+            install("g2p-en==2.1.0")
+        }
     }
 }
 
 dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.2")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.core:core:1.12.0")
 }

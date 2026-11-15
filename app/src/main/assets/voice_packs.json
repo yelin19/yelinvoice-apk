@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "repository": "yelin201875/Yelinvoice",
+  "revision": "49f86f4e04ecf7bdab1ba7dd363cb444a6043de0",
+  "voices": [
+    {
+      "id": "shoon",
+      "label": "ရှုန်း (Shoon)",
+      "files": {
+        "encoder.onnx": { "path": "onnx/shoon/encoder.onnx", "sha256": "96d01ea2e861cfc38b0423b56f56896404a786382b2af1f4a8299464df6b06ae" },
+        "decoder.onnx": { "path": "onnx/shoon/decoder.onnx", "sha256": "317c6248bbee3091152333e0d9976c3005bbf30e131552d4fb2585e879291814" },
+        "voice.json": { "path": "onnx/shoon/voice.json", "sha256": "e98214f5c1f9710bb4e0ae3e40e6baa3ef3a8667400c0f2bdae8980020717d1a" }
+      }
+    },
+    {
+      "id": "thazin",
+      "label": "သဇင် (Thazin)",
+      "files": {
+        "encoder.onnx": { "path": "onnx/thazin/encoder.onnx", "sha256": "61f4e9c34624540d8e9ab8163f741b785bc2f17f7db8a98694aa87720d1fa7cd" },
+        "decoder.onnx": { "path": "onnx/thazin/decoder.onnx", "sha256": "2fea887904a2e7098757e4a1a111b6c59ceae8f1ce76f78f8600cb0e66e58824" },
+        "voice.json": { "path": "onnx/thazin/voice.json", "sha256": "56aabb3af53b530e522155ea78edca6547f3eed35da47ff39522d18c4b3a83be" }
+      }
+    },
+    {
+      "id": "ko-banyar",
+      "label": "ကိုဘညား (Ko Banyar)",
+      "files": {
+        "encoder.onnx": { "path": "onnx/ko-banyar/encoder.onnx", "sha256": "272ea5129a268995d17e7c551380fa021300d275f6d1d8c4c4b267bf389f6c77" },
+        "decoder.onnx": { "path": "onnx/ko-banyar/decoder.onnx", "sha256": "021077f87009fd406c0b83645c94401f03c4f69cd767a5fb8197d3ba659d250c" },
+        "voice.json": { "path": "onnx/ko-banyar/voice.json", "sha256": "4d08270607b233aef90d819ef37ed34411c28ac68ae5015343b81e506cb6a694" }
+      }
+    },
+    {
+      "id": "htet-myat",
+      "label": "ထက်မြတ် (Htet Myat)",
+      "files": {
+        "encoder.onnx": { "path": "onnx/htet-myat/encoder.onnx", "sha256": "c9ddd2726904c91a56f3dc9bb43bbf3e75a6f472a820e4e61db4e25af617b5bd" },
+        "decoder.onnx": { "path": "onnx/htet-myat/decoder.onnx", "sha256": "408df3eb84f516d27a2a09d416572ca58712412148c5fd2fd403df225c727f48" },
+        "voice.json": { "path": "onnx/htet-myat/voice.json", "sha256": "4f9d724b894d9ad17f055361b465addf4a2b6f20c0b63ae9592a6665015c5c2f" }
+      }
+    }
+  ]
+}

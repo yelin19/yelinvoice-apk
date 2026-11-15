@@ -31,7 +31,7 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
         val audioPieces = ArrayList<FloatArray>()
 
         for (piece in pieces) {
-            val phonemes = bridge.callAttr("phonemize_myanmar", piece).toString()
+            val phonemes = bridge.callAttr("phonemize_text", piece).toString()
             val ids = ArrayList<Long>()
             phonemes.codePoints().forEach { cp ->
                 val symbol = String(Character.toChars(cp))

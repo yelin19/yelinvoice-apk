@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "repository": "yelin201875/Yelinvoice",
+  "revision": "49f86f4e04ecf7bdab1ba7dd363cb444a6043de0",
+  "voices": [
+    {
+      "id": "shoon",
+      "label": "Shoon",
+      "files": {
+        "encoder.onnx": {
+          "path": "onnx/shoon/encoder.onnx",
+          "sha256": "96d01ea2e861cfc38b0423b56f56896404a786382b2af1f4a8299464df6b06ae"
+        },
+        "decoder.onnx": {
+          "path": "onnx/shoon/decoder.onnx",
+          "sha256": "317c6248bbee3091152333e0d9976c3005bbf30e131552d4fb2585e879291814"
+        },
+        "voice.json": {
+          "path": "onnx/shoon/voice.json",
+          "sha256": "e98214f5c1f9710bb4e0ae3e40e6baa3ef3a8667400c0f2bdae8980020717d1a"
+        }
+      }
+    }
+  ]
+}
