@@ -153,7 +153,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(28))
         }
-        scroll.addView(column, ScrollView.LayoutParams(
+        scroll.addView(column, ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
         screenFrame.addView(scroll, FrameLayout.LayoutParams(
@@ -203,7 +203,7 @@ class MainActivity : Activity() {
             val textLayout = TextInputLayout(this@MainActivity).apply {
                 hint = "မြန်မာ သို့မဟုတ် English စာသား"
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-                counterEnabled = true
+                isCounterEnabled = true
                 counterMaxLength = MAX_TEXT_LENGTH
             }
             val edit = TextInputEditText(this@MainActivity).apply {
@@ -354,7 +354,7 @@ class MainActivity : Activity() {
             }
             val repoField = TextInputEditText(this@MainActivity).apply {
                 setText(prefs.getString("catalog_url", "https://huggingface.co/yelin201875/Yelinvoice"))
-                singleLine = true
+                setSingleLine(true)
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
             }
             repoLayout.addView(repoField, LinearLayout.LayoutParams(
@@ -781,7 +781,7 @@ class MainActivity : Activity() {
         setCardBackgroundColor(surfaceColor)
         radius = dp(20).toFloat()
         cardElevation = dp(1).toFloat()
-        strokeColor = ColorStateList.valueOf(getColorResource(R.color.brand_surface_variant))
+        strokeColor = getColorResource(R.color.brand_surface_variant)
         strokeWidth = dp(1)
         useCompatPadding = false
     }
