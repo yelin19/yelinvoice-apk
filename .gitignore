@@ -1,0 +1,14 @@
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+*.apk
+*.aab
+# Model weights are downloaded to app-private storage at runtime.
+*.onnx
+model-cache/
+
+__pycache__/
+*.py[cod]
