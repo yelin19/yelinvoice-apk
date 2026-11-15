@@ -88,6 +88,7 @@ object TimestampDubRenderer {
         transcript: String,
         engine: OfflineTtsEngine,
         outputFile: File,
+        speedFactorProvider: () -> Float = { 1.0f },
         onProgress: (Int, String) -> Unit = { _, _ -> }
     ) {
         val segments = TimestampTranscriptParser.parse(transcript)
@@ -110,10 +111,13 @@ object TimestampDubRenderer {
                     engine.synthesize(segment.text, chunkFile)
                     var samples = readPcm16Wav(chunkFile)
                     val slotFrames = (segment.slotMs * SAMPLE_RATE / 1000.0).roundToInt().coerceAtLeast(1)
-                    if (samples.size > slotFrames) {
+                    val selectedFactor = speedFactorProvider().coerceIn(1.0f, 2.0f)
+                    val factorTargetFrames = (samples.size / selectedFactor).roundToInt().coerceAtLeast(1)
+                    val targetFrames = minOf(slotFrames, factorTargetFrames)
+                    if (samples.size > targetFrames) {
                         val originalMs = samples.size * 1000.0 / SAMPLE_RATE
-                        val speed = samples.size.toDouble() / slotFrames
-                        samples = WsolaTimeStretch.fit(samples, slotFrames)
+                        val speed = samples.size.toDouble() / targetFrames
+                        samples = WsolaTimeStretch.fit(samples, targetFrames)
                         val shownSpeed = String.format(java.util.Locale.US, "%.2f×", speed)
                         onProgress(percentBefore, "စာကြောင်း ${index + 1}: ${originalMs.toInt()} ms ကို $shownSpeed အရှိန်မြှင့်နေသည်…")
                         require(samples.size <= slotFrames) {

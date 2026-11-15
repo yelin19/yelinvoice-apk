@@ -58,6 +58,7 @@ class MainActivity : Activity() {
     private var selectedVoiceId = "shoon"
     private var draftText = ""
     private var timestampMode = false
+    @Volatile private var timestampSpeedFactor = 1.0f
     private var playbackSpeed = 1.0f
     private var busy = false
     private var progressPercent = 0
@@ -73,6 +74,12 @@ class MainActivity : Activity() {
     private var statusText: TextView? = null
     private var progressBar: ProgressBar? = null
     private var formatModeButton: MaterialButton? = null
+    private var timestampSpeedSlider: Slider? = null
+    private var previewButton: MaterialButton? = null
+    private var playbackProgressBar: ProgressBar? = null
+    private var playbackTimeLabel: TextView? = null
+    private var playbackProgressRunnable: Runnable? = null
+    private var previewFile: File? = null
     private var statusMessage = "အသံရွေးပြီး စာသားထည့်ပါ။ ပထမဆုံးအသုံးပြုချိန်တွင် voice model ဒေါင်းလုဒ်လုပ်ပါမည်။"
 
     private val prefs by lazy { getSharedPreferences("yelinvoice-settings", MODE_PRIVATE) }
@@ -99,6 +106,7 @@ class MainActivity : Activity() {
                 selectedVoiceId = modelRepository.voices.firstOrNull()?.id ?: "shoon"
             }
             playbackSpeed = prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f)
+            timestampSpeedFactor = prefs.getFloat("timestamp_speed_factor", 1.0f).coerceIn(1.0f, 2.0f)
             lastOutput = historyRepository.all().firstOrNull()
 
             buildShell()
@@ -157,6 +165,8 @@ class MainActivity : Activity() {
         statusText = null
         progressBar = null
         formatModeButton = null
+        timestampSpeedSlider = null
+        previewButton = null
         when (tab) {
             TAB_HISTORY -> renderHistoryPage()
             TAB_SETTINGS -> renderSettingsPage()
@@ -214,7 +224,19 @@ class MainActivity : Activity() {
             voiceLayout.addView(picker, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ))
-            addView(voiceLayout, matchWidth())
+            val voiceRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            voiceRow.addView(voiceLayout, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            voiceRow.addView(spaceWidth(8), LinearLayout.LayoutParams(dp(8), 1))
+            val preview = actionButton("နမူနာအသံစမ်း", filled = false).apply {
+                textSize = 11.5f
+                setOnClickListener { previewSelectedVoice() }
+            }
+            previewButton = preview
+            voiceRow.addView(preview, LinearLayout.LayoutParams(dp(116), dp(56)))
+            addView(voiceRow, matchWidth())
             addView(space(8), matchWidth())
             addView(label("${current.repository} · ${current.id}", 12f, mutedColor), matchWidth())
         }
@@ -263,6 +285,42 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
             ))
             addView(textLayout, matchWidth())
+            val resizeHandle = label("↕  အကွက်အမြင့်ပြောင်းရန်", 12f, mutedColor).apply {
+                gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                setPadding(dp(8), dp(4), dp(4), dp(4))
+                setOnTouchListener(object : View.OnTouchListener {
+                    private var startY = 0f
+                    private var startHeight = 0
+                    private var resizing = false
+                    override fun onTouch(view: View, event: android.view.MotionEvent): Boolean {
+                        when (event.actionMasked) {
+                            android.view.MotionEvent.ACTION_DOWN -> {
+                                startY = event.rawY
+                                startHeight = edit.layoutParams.height
+                                resizing = true
+                                return true
+                            }
+                            android.view.MotionEvent.ACTION_MOVE -> if (resizing) {
+                                val maxHeight = (resources.displayMetrics.heightPixels * 0.60f).toInt()
+                                edit.layoutParams = edit.layoutParams.apply {
+                                    height = (startHeight + (event.rawY - startY).toInt())
+                                        .coerceIn(dp(110), maxHeight)
+                                }
+                                edit.requestLayout()
+                                return true
+                            }
+                            android.view.MotionEvent.ACTION_UP,
+                            android.view.MotionEvent.ACTION_CANCEL -> {
+                                val wasResizing = resizing
+                                resizing = false
+                                return wasResizing
+                            }
+                        }
+                        return resizing
+                    }
+                })
+            }
+            addView(resizeHandle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
             if (timestampMode) {
                 addView(space(8), matchWidth())
                 addView(label("စာကြောင်းတစ်ကြောင်းစီကို [00:00 - 00:03] စာသား ပုံစံဖြင့်ရေးပါ။ အချိန်ကွက်လပ်များတွင် တိတ်ဆိတ်နေမည်ဖြစ်ပြီး၊ အသံရှည်ပါက စကားလုံးမဖြတ်ဘဲ pitch မပြောင်းဘဲ အမြန်နှုန်းညှိပေးပါမည်။", 12f, mutedColor), matchWidth())
@@ -270,6 +328,7 @@ class MainActivity : Activity() {
         }
 
         addSpeedControl(page)
+        if (timestampMode) addTimestampSpeedControl(page)
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -345,11 +404,21 @@ class MainActivity : Activity() {
             val voice = modelRepository.voices.firstOrNull { it.id == record.voiceId }?.label ?: record.voiceId
             val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(record.createdAt))
             addView(label("$voice · $date", 12f, mutedColor), matchWidth())
+            addView(space(6), matchWidth())
+            val playbackProgress = ProgressBar(this@MainActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = PLAYBACK_PROGRESS_MAX
+                progress = 0
+                progressTintList = ColorStateList.valueOf(primaryColor)
+                progressBackgroundTintList = ColorStateList.valueOf(outlineColor)
+            }
+            addView(playbackProgress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5)))
+            val playbackTime = label("00:00 / --:--", 12f, mutedColor)
+            addView(playbackTime, matchWidth())
             addView(space(12), matchWidth())
 
             val firstRow = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.HORIZONTAL }
             firstRow.addView(actionButton("နားထောင်", false).apply {
-                setOnClickListener { playAudio(record.file) }
+                setOnClickListener { playAudio(record.file, playbackProgress, playbackTime) }
             }, LinearLayout.LayoutParams(0, dp(46), 1f))
             firstRow.addView(spaceWidth(8), LinearLayout.LayoutParams(dp(8), 1))
             firstRow.addView(actionButton("ဖုန်းထဲသိမ်း", false).apply {
@@ -474,6 +543,39 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun addTimestampSpeedControl(page: LinearLayout) {
+        card(page) {
+            val row = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(label("Timestamp အသံမြန်နှုန်း", 15f, inkColor, true),
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val valueLabel = label(String.format(Locale.US, "%.1f×", timestampSpeedFactor), 14f, primaryColor, true)
+            row.addView(valueLabel, wrapWidth())
+            addView(row, matchWidth())
+            val slider = Slider(this@MainActivity).apply {
+                valueFrom = 1.0f
+                valueTo = 2.0f
+                stepSize = 0.1f
+                value = timestampSpeedFactor.coerceIn(valueFrom, valueTo)
+                // Intentionally remains enabled while rendering; subsequent
+                // transcript lines use the updated factor immediately.
+                isEnabled = true
+            }
+            slider.addOnChangeListener { _, value, fromUser ->
+                if (fromUser) {
+                    timestampSpeedFactor = value
+                    valueLabel.text = String.format(Locale.US, "%.1f×", value)
+                    prefs.edit().putFloat("timestamp_speed_factor", value).apply()
+                }
+            }
+            timestampSpeedSlider = slider
+            addView(slider, matchWidth())
+            addView(label("၁.၀× မှ ၂.၀× အထိ ရွေးနိုင်သည်။ Slot ထက်ရှည်သောစာကြောင်းကို အလိုအလျောက် အချိန်ကိုက်ညှိပြီး၊ slider ကို render လုပ်နေစဉ်လည်း ပြောင်းလဲနိုင်သည်။", 12f, mutedColor), matchWidth())
+        }
+    }
+
     private fun generateSpeech() {
         if (busy) return
         val text = draftText.trim()
@@ -515,9 +617,12 @@ class MainActivity : Activity() {
                 temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
                 OfflineTtsEngine(files).use { engine ->
                     if (timestampModeForJob) {
-                        TimestampDubRenderer.render(text, engine, temporary!!) { percent, message ->
-                            mainHandler.post { setSpeechProgress(percent, message) }
-                        }
+                        TimestampDubRenderer.render(
+                            transcript = text,
+                            engine = engine,
+                            outputFile = temporary!!,
+                            speedFactorProvider = { timestampSpeedFactor }
+                        ) { percent, message -> mainHandler.post { setSpeechProgress(percent, message) } }
                     } else {
                         engine.synthesize(text, temporary!!) { percent ->
                             mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
@@ -697,13 +802,68 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun playAudio(file: File) {
+    private fun previewSelectedVoice() {
+        if (busy) return
+        val selected = modelRepository.voices.firstOrNull { it.id == selectedVoiceId } ?: return
+        val sample = "မင်္ဂလာပါ။ Hello, this is a voice preview."
+        busy = true
+        setSpeechProgress(1, "${selected.label} နမူနာအသံ ပြင်ဆင်နေသည်… 1%")
+        applyBusyState()
+        worker.execute {
+            var temporary: File? = null
+            try {
+                if (!Python.isStarted()) Python.start(AndroidPlatform(applicationContext))
+                val nltkDirectory = prepareEnglishResources()
+                Python.getInstance().getModule("nara_bridge")
+                    .callAttr("configure_english_data", nltkDirectory.absolutePath)
+                val files = modelRepository.ensureInstalled(selected.id) { event ->
+                    val percent = if (event.totalBytes > 0L) {
+                        (event.downloadedBytes * 100L / event.totalBytes).toInt().coerceIn(1, 99)
+                    } else 1
+                    val downloaded = event.downloadedBytes / (1024.0 * 1024.0)
+                    val total = if (event.totalBytes > 0L) " / ${"%.1f".format(Locale.US, event.totalBytes / (1024.0 * 1024.0))} MB" else " MB"
+                    mainHandler.post {
+                        setSpeechProgress(percent, "${event.fileName}: ${"%.1f".format(Locale.US, downloaded)}$total · $percent%")
+                    }
+                }
+                temporary = File(cacheDir, "voice-preview-${System.currentTimeMillis()}.wav")
+                OfflineTtsEngine(files).use { engine ->
+                    engine.synthesize(sample, temporary!!) { percent ->
+                        mainHandler.post { setSpeechProgress(percent, "နမူနာအသံ ဖန်တီးနေသည်… $percent%") }
+                    }
+                }
+                mainHandler.post {
+                    busy = false
+                    previewFile = temporary
+                    setSpeechProgress(100, "${selected.label} နမူနာအသံ ဖွင့်နေပါသည်။")
+                    applyBusyState()
+                    playAudio(temporary!!)
+                }
+            } catch (error: Exception) {
+                temporary?.delete()
+                mainHandler.post {
+                    busy = false
+                    showStatus("နမူနာအသံ မဖန်တီးနိုင်ပါ။ ${error.message ?: "အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။"}")
+                    applyBusyState()
+                }
+            }
+        }
+    }
+
+    private fun playAudio(file: File, progressBar: ProgressBar? = null, timeLabel: TextView? = null) {
         if (!file.isFile) {
             toast("အသံဖိုင်ကို ရှာမတွေ့ပါ။")
             return
         }
         try {
+            stopPlaybackProgress()
             player?.release()
+            previewFile?.takeIf { it != file }?.delete()
+            if (previewFile != file) previewFile = null
+            playbackProgressBar = progressBar
+            playbackTimeLabel = timeLabel
+            progressBar?.progress = 0
+            timeLabel?.text = "00:00 / --:--"
             val next = MediaPlayer()
             player = next
             next.setAudioAttributes(AudioAttributes.Builder()
@@ -718,14 +878,33 @@ class MainActivity : Activity() {
                     }
                 } catch (_: Exception) { }
                 media.start()
+                updatePlaybackProgress(media)
             }
             next.setOnCompletionListener { media ->
+                stopPlaybackProgress()
+                playbackProgressBar?.progress = PLAYBACK_PROGRESS_MAX
+                playbackTimeLabel?.text = "${formatPlaybackTime(media.duration)} / ${formatPlaybackTime(media.duration)}"
                 media.release()
                 if (player === media) player = null
+                if (previewFile == file) {
+                    file.delete()
+                    previewFile = null
+                }
+                playbackProgressBar = null
+                playbackTimeLabel = null
             }
             next.setOnErrorListener { media, _, _ ->
+                stopPlaybackProgress()
                 media.release()
                 if (player === media) player = null
+                if (previewFile == file) {
+                    file.delete()
+                    previewFile = null
+                }
+                playbackProgressBar?.progress = 0
+                playbackTimeLabel?.text = "00:00 / --:--"
+                playbackProgressBar = null
+                playbackTimeLabel = null
                 toast("အသံဖိုင်ကို ဖွင့်မရပါ။")
                 true
             }
@@ -736,6 +915,30 @@ class MainActivity : Activity() {
             player = null
             toast("အသံဖိုင်ကို ဖွင့်မရပါ။ ${error.message ?: ""}")
         }
+    }
+
+    private fun updatePlaybackProgress(media: MediaPlayer) {
+        try {
+            val duration = media.duration.coerceAtLeast(1)
+            val position = media.currentPosition.coerceIn(0, duration)
+            playbackProgressBar?.progress = (position.toLong() * PLAYBACK_PROGRESS_MAX / duration).toInt()
+            playbackTimeLabel?.text = "${formatPlaybackTime(position)} / ${formatPlaybackTime(duration)}"
+        } catch (_: Exception) { }
+        if (media.isPlaying) {
+            val update = Runnable { if (player === media) updatePlaybackProgress(media) }
+            playbackProgressRunnable = update
+            mainHandler.postDelayed(update, 200L)
+        }
+    }
+
+    private fun stopPlaybackProgress() {
+        playbackProgressRunnable?.let(mainHandler::removeCallbacks)
+        playbackProgressRunnable = null
+    }
+
+    private fun formatPlaybackTime(milliseconds: Int): String {
+        val seconds = milliseconds.coerceAtLeast(0) / 1000
+        return String.format(Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
     }
 
     private fun applyPlaybackSpeed() {
@@ -917,6 +1120,8 @@ class MainActivity : Activity() {
         voicePicker?.isEnabled = !busy
         textInput?.isEnabled = !busy
         formatModeButton?.isEnabled = !busy
+        previewButton?.isEnabled = !busy
+        previewButton?.alpha = if (busy) 0.6f else 1f
         listenButton?.isEnabled = !busy && lastOutput != null
         listenButton?.alpha = if (listenButton?.isEnabled == true) 1f else 0.55f
         progressBar?.visibility = if (busy) View.VISIBLE else View.GONE
@@ -939,10 +1144,13 @@ class MainActivity : Activity() {
     private fun wrapWidth() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
     override fun onDestroy() {
+        stopPlaybackProgress()
         downloadDialog?.dismiss()
         downloadDialog = null
         player?.release()
         player = null
+        previewFile?.delete()
+        previewFile = null
         worker.shutdownNow()
         super.onDestroy()
     }
@@ -953,6 +1161,7 @@ class MainActivity : Activity() {
         private const val TAB_SETTINGS = 3
         private const val REQUEST_EXPORT_AUDIO = 601
         private const val REQUEST_IMPORT_CATALOG = 602
+        private const val PLAYBACK_PROGRESS_MAX = 1_000
         private const val MAX_CATALOG_BYTES = 512 * 1024
     }
 }
