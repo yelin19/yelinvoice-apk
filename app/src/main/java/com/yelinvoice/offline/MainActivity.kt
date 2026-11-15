@@ -205,7 +205,7 @@ class MainActivity : Activity() {
                 }
             }
             voicePicker = picker
-            voiceLayout.addView(picker, ViewGroup.LayoutParams(
+            voiceLayout.addView(picker, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ))
             addView(voiceLayout, matchWidth())
