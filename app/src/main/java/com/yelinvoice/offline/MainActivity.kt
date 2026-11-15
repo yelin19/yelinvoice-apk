@@ -821,35 +821,28 @@ class MainActivity : Activity() {
                     val total = if (event.totalBytes > 0L) " / ${"%.1f".format(Locale.US, event.totalBytes / (1024.0 * 1024.0))} MB" else " MB (စုစုပေါင်း အရွယ်အစားမသိ)"
                     mainHandler.post { setSpeechProgress(percent, "${event.fileName}: ${"%.1f".format(Locale.US, mb)}$total · $percent%") }
                 }
-                val createdRecords = ArrayList<AudioRecord>()
+                temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
+                var record: AudioRecord? = null
                 OfflineTtsEngine(files).use { engine ->
                     if (timestampModeForJob) {
-                        val segments = TimestampDubRenderer.renderSegments(
+                        TimestampDubRenderer.render(
                             transcript = text,
                             engine = engine,
-                            outputDirectory = cacheDir,
+                            outputFile = temporary!!,
                             speedFactorProvider = { timestampSpeedFactor }
                         ) { percent, message -> mainHandler.post { setSpeechProgress(percent, message) } }
-                        segments.forEachIndexed { index, pair ->
-                            val segment = pair.first
-                            val label = "[${formatTranscriptTime(segment.startMs)} - ${formatTranscriptTime(segment.endMs)}] ${segment.text}"
-                            createdRecords.add(historyRepository.add(pair.second, label, selected))
-                            pair.second.delete()
-                            mainHandler.post { setSpeechProgress(((index + 1) * 100 / segments.size).coerceIn(1, 100), "သီးခြားအသံဖိုင် ${index + 1}/${segments.size} ကို History ထဲသိမ်းနေသည်…") }
-                        }
                     } else {
-                        temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
                         engine.synthesize(text, temporary!!) { percent ->
                             mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
                         }
-                        createdRecords.add(historyRepository.add(temporary!!, text, selected))
                     }
                 }
+                record = historyRepository.add(temporary!!, text, selected)
                 temporary?.delete()
                 mainHandler.post {
-                    lastOutput = createdRecords.firstOrNull() ?: historyRepository.all().firstOrNull()
+                    lastOutput = record
                     busy = false
-                    setSpeechProgress(100, if (timestampModeForJob) "Timestamp အလိုက် အသံပိုင်း ${createdRecords.size} ခု သီးခြားသိမ်းပြီးပါပြီ။ 100%" else "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
+                    setSpeechProgress(100, if (timestampModeForJob) "Timestamp အလိုက် အသံတစ်ဖိုင်တည်း ဖန်တီးပြီးပါပြီ။ 100%" else "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
                     if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) renderCreatePage()
                     else if (currentTab == TAB_HISTORY) renderHistoryPage()
                     applyBusyState()
