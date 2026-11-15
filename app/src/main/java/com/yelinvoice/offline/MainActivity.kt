@@ -81,23 +81,39 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = pageColor
-        window.navigationBarColor = pageColor
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        try {
+            window.statusBarColor = pageColor
+            window.navigationBarColor = pageColor
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
 
-        modelRepository = VoiceModelRepository(this)
-        historyRepository = AudioHistoryRepository(this)
-        if (!Python.isStarted()) Python.start(AndroidPlatform(applicationContext))
+            modelRepository = VoiceModelRepository(this)
+            historyRepository = AudioHistoryRepository(this)
 
-        selectedVoiceId = prefs.getString("selected_voice", "shoon") ?: "shoon"
-        if (modelRepository.voices.none { it.id == selectedVoiceId }) {
-            selectedVoiceId = modelRepository.voices.firstOrNull()?.id ?: "shoon"
+            selectedVoiceId = prefs.getString("selected_voice", "shoon") ?: "shoon"
+            if (modelRepository.voices.none { it.id == selectedVoiceId }) {
+                selectedVoiceId = modelRepository.voices.firstOrNull()?.id ?: "shoon"
+            }
+            playbackSpeed = prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f)
+            lastOutput = historyRepository.all().firstOrNull()
+
+            buildShell()
+            renderPage(TAB_CREATE)
+        } catch (error: Throwable) {
+            android.util.Log.e("YelinvoiceOffline", "App startup failed", error)
+            showStartupFailure(error)
         }
-        playbackSpeed = prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f)
-        lastOutput = historyRepository.all().firstOrNull()
+    }
 
-        buildShell()
-        renderPage(TAB_CREATE)
+    private fun showStartupFailure(error: Throwable) {
+        val details = TextView(this).apply {
+            text = "App စတင်ရာတွင် အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။\n\n${error.javaClass.simpleName}: ${error.message ?: "အသေးစိတ်မရှိပါ"}\n\nဒီစာမျက်နှာကို screenshot ရိုက်ပြီး ပို့ပေးပါ။"
+            textSize = 16f
+            setTextColor(Color.BLACK)
+            setBackgroundColor(Color.WHITE)
+            setPadding(dp(24), dp(32), dp(24), dp(32))
+            setTextIsSelectable(true)
+        }
+        setContentView(details)
     }
 
     private fun buildShell() {
@@ -455,6 +471,7 @@ class MainActivity : Activity() {
         worker.execute {
             var temporary: File? = null
             try {
+                if (!Python.isStarted()) Python.start(AndroidPlatform(applicationContext))
                 val hasEnglish = text.any { it in 'A'..'Z' || it in 'a'..'z' }
                 if (hasEnglish) {
                     val nltkDirectory = prepareEnglishResources()
