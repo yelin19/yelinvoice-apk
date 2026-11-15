@@ -84,6 +84,76 @@ object TimestampDubRenderer {
     private const val SAMPLE_RATE = 24_000
     private const val WAV_HEADER_SIZE = 44
 
+    /** Create one independently playable WAV for every timestamp interval. */
+    fun renderSegments(
+        transcript: String,
+        engine: OfflineTtsEngine,
+        outputDirectory: File,
+        speedFactorProvider: () -> Float = { 1.0f },
+        onProgress: (Int, String) -> Unit = { _, _ -> }
+    ): List<Pair<TimedSpeechSegment, File>> {
+        val segments = TimestampTranscriptParser.parse(transcript)
+        require(outputDirectory.exists() || outputDirectory.mkdirs()) { "Timestamp အသံဖိုင်သိမ်းရန် folder မဖန်တီးနိုင်ပါ။" }
+        val outputs = ArrayList<Pair<TimedSpeechSegment, File>>(segments.size)
+        segments.forEachIndexed { index, segment ->
+            val percent = (index * 100 / segments.size).coerceIn(1, 98)
+            onProgress(percent, "Timestamp ${index + 1}/${segments.size} အသံပိုင်းကို သီးခြားဖန်တီးနေသည်… $percent%")
+            val chunkFile = File(outputDirectory, "timestamp-source-${System.currentTimeMillis()}-$index.wav")
+            val segmentFile = File(outputDirectory, "timestamp-segment-${System.currentTimeMillis()}-$index.wav")
+            try {
+                engine.synthesize(segment.text, chunkFile)
+                var samples = readPcm16Wav(chunkFile)
+                val slotFrames = (segment.slotMs * SAMPLE_RATE / 1000.0).roundToInt().coerceAtLeast(1)
+                val selectedFactor = speedFactorProvider().coerceIn(1.0f, 2.0f)
+                val selectedTarget = (samples.size / selectedFactor).roundToInt().coerceAtLeast(1)
+                val targetFrames = minOf(slotFrames, selectedTarget)
+                if (samples.size > targetFrames) samples = WsolaTimeStretch.fit(samples, targetFrames)
+                require(samples.size <= slotFrames) { "စာကြောင်း ${segment.lineNumber} ကို timestamp အချိန်အတွင်း အပြည့်ထည့်မရပါ။" }
+                writeSlotWav(segmentFile, samples, slotFrames.toLong())
+                outputs.add(segment to segmentFile)
+            } catch (error: Exception) {
+                segmentFile.delete()
+                outputs.forEach { it.second.delete() }
+                throw error
+            } finally {
+                chunkFile.delete()
+            }
+            val completed = (((index + 1) * 100.0) / segments.size).toInt().coerceIn(1, 99)
+            onProgress(completed, "Timestamp အသံပိုင်း ${index + 1}/${segments.size} ပြီးပါပြီ… $completed%")
+        }
+        onProgress(100, "Timestamp အသံပိုင်း ${outputs.size} ခု သီးခြားပြီးပါပြီ။ 100%")
+        return outputs
+    }
+
+    private fun writeSlotWav(file: File, samples: ShortArray, slotFrames: Long) {
+        val slotBytes = slotFrames * 2L
+        require(slotBytes <= 0xFFFFFFFFL - 36L && slotFrames >= samples.size) {
+            "Timestamp interval သည် WAV ဖိုင်အရွယ်အစားကန့်သတ်ချက်ထက် ကျော်နေပါသည်။"
+        }
+        BufferedOutputStream(FileOutputStream(file), 64 * 1024).use { output ->
+            output.write(wavHeader(slotBytes))
+            val buffer = ByteArray(64 * 1024)
+            var offset = 0
+            while (offset < samples.size) {
+                val count = minOf(samples.size - offset, buffer.size / 2)
+                for (i in 0 until count) {
+                    val sample = samples[offset + i].toInt()
+                    buffer[i * 2] = (sample and 0xff).toByte()
+                    buffer[i * 2 + 1] = ((sample shr 8) and 0xff).toByte()
+                }
+                output.write(buffer, 0, count * 2)
+                offset += count
+            }
+            var silenceBytes = slotBytes - samples.size * 2L
+            val silence = ByteArray(minOf(buffer.size.toLong(), silenceBytes).toInt())
+            while (silenceBytes > 0L) {
+                val count = minOf(silence.size.toLong(), silenceBytes).toInt()
+                output.write(silence, 0, count)
+                silenceBytes -= count
+            }
+        }
+    }
+
     fun render(
         transcript: String,
         engine: OfflineTtsEngine,

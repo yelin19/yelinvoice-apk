@@ -25,6 +25,10 @@ App နှင့်အတူ ထည့်သွင်းထားသော `cmud
 - `com.microsoft.onnxruntime:onnxruntime-android` ဖြင့် ONNX inference လုပ်သည်။ License/notice: https://onnxruntime.ai/docs/install/
 - `com.google.android.material:material` နှင့် AndroidX Core ကို UI၊ Material Design 3 component နှင့် FileProvider အတွက် အသုံးပြုသည်။ ၎င်းတို့၏ Apache License 2.0 သတိပေးချက်ကို dependency နှင့်အတူ ဖြန့်ဝေပါသည်။
 
+## Offline speech-to-text — whisper.cpp
+
+`app/src/main/cpp/whisper.cpp/` ထဲရှိ whisper.cpp native source ကို upstream repository မှ MIT License အောက်တွင် vendoring လုပ်ထားပြီး မူရင်းလိုင်စင်စာသားကို အဲဒီဖိုင်တွဲရှိ `LICENSE` ထဲတွင် ထည့်ထားသည်။ App သည် `ggerganov/whisper.cpp` Hugging Face repository дахь multilingual `ggml-tiny.bin` weight-ийг анх хэрэглээнд татаж, SHA-1 утгыг шалгасны дараа app-private storage-д хадгална။ Whisper model-ийн гарал үүсэл/лицензийн мэдээлэл: https://github.com/openai/whisper ; https://huggingface.co/ggerganov/whisper.cpp
+
 ## Voice အသုံးပြုမှုနှင့် ပုဂ္ဂိုလ်ရေးခွင့်
 
 Voice pack တစ်ခုကို app ထဲသို့ ထည့်မည် သို့မဟုတ် ဖြန့်ဝေမည်ဆိုလျှင် model၊ training material နှင့် အသံပိုင်ရှင်တို့၏ ခွင့်ပြုချက်ကို သီးခြားစစ်ဆေးပါ။ App သည် voice model training မလုပ်ပါ။

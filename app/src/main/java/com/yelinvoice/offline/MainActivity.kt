@@ -80,6 +80,19 @@ class MainActivity : Activity() {
     private var playbackTimeLabel: TextView? = null
     private var playbackProgressRunnable: Runnable? = null
     private var previewFile: File? = null
+    private var selectedTranscriptionLanguage = "my"
+    private var selectedChineseScript = "Hans"
+    private var transcriptionUri: Uri? = null
+    private var transcriptionOutput = ""
+    private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
+    private var transcriptionStatusView: TextView? = null
+    private var transcribeButton: MaterialButton? = null
+    private var selectedTranscriptionLanguage = "my"
+    private var selectedChineseScript = "Hans"
+    private var transcriptionUri: Uri? = null
+    private var transcriptionOutput = ""
+    private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
+    private var transcribeButton: MaterialButton? = null
     private var statusMessage = "အသံရွေးပြီး စာသားထည့်ပါ။ ပထမဆုံးအသုံးပြုချိန်တွင် voice model ဒေါင်းလုဒ်လုပ်ပါမည်။"
 
     private val prefs by lazy { getSharedPreferences("yelinvoice-settings", MODE_PRIVATE) }
@@ -143,6 +156,8 @@ class MainActivity : Activity() {
             labelVisibilityMode = com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED
             menu.add(Menu.NONE, TAB_CREATE, Menu.NONE, "ဖန်တီးမည်").setIcon(R.drawable.ic_create)
             menu.add(Menu.NONE, TAB_HISTORY, Menu.NONE, "အသံဖိုင်များ").setIcon(R.drawable.ic_library)
+            menu.add(Menu.NONE, TAB_TIMESTAMP, Menu.NONE, "Timestamp").setIcon(R.drawable.ic_timestamp)
+            menu.add(Menu.NONE, TAB_TRANSCRIBE, Menu.NONE, "စာသားထုတ်").setIcon(R.drawable.ic_transcribe)
             menu.add(Menu.NONE, TAB_SETTINGS, Menu.NONE, "ဆက်တင်များ").setIcon(R.drawable.ic_settings)
             setOnItemSelectedListener { item ->
                 renderPage(item.itemId)
@@ -158,6 +173,7 @@ class MainActivity : Activity() {
 
     private fun renderPage(tab: Int) {
         currentTab = tab
+        timestampMode = tab == TAB_TIMESTAMP
         voicePicker = null
         textInput = null
         makeButton = null
@@ -167,8 +183,11 @@ class MainActivity : Activity() {
         formatModeButton = null
         timestampSpeedSlider = null
         previewButton = null
+        transcribeButton = null
+        transcriptionStatusView = null
         when (tab) {
             TAB_HISTORY -> renderHistoryPage()
+            TAB_TRANSCRIBE -> renderTranscriptionPage()
             TAB_SETTINGS -> renderSettingsPage()
             else -> renderCreatePage()
         }
@@ -196,7 +215,11 @@ class MainActivity : Activity() {
 
     private fun renderCreatePage() {
         val page = newPage()
-        addHeader(page, "စာသားမှ အသံဖိုင်သို့", "အင်တာနက်မလိုဘဲ မြန်မာနှင့် အင်္ဂလိပ်စာကို အသံထုတ်ပါ။")
+        if (timestampMode) {
+            addHeader(page, "Timestamp dubbing", "Timestamp တစ်ခုချင်းစီကို သီးခြား WAV အသံပိုင်းအဖြစ် အင်တာနက်မလိုဘဲ ဖန်တီးပါ။")
+        } else {
+            addHeader(page, "စာသားမှ အသံဖိုင်သို့", "အင်တာနက်မလိုဘဲ မြန်မာနှင့် အင်္ဂလိပ်စာကို အသံထုတ်ပါ။")
+        }
 
         card(page) {
             addView(label("အသံရွေးချယ်ရန်", 16f, inkColor, true), matchWidth())
@@ -244,19 +267,6 @@ class MainActivity : Activity() {
         card(page) {
             addView(label(if (timestampMode) "Timestamp ဖြင့် အသံထုတ်ရန်" else "ဖတ်စေလိုသော စာသား", 16f, inkColor, true), matchWidth())
             addView(space(10), matchWidth())
-            val modeButton = actionButton(
-                if (timestampMode) "ပုံမှန်ဖတ်မုဒ်သို့ ပြောင်းရန်" else "Timestamp dubbing မုဒ်သို့ ပြောင်းရန်",
-                filled = false
-            ).apply {
-                setOnClickListener {
-                    if (busy) return@setOnClickListener
-                    timestampMode = !timestampMode
-                    renderCreatePage()
-                }
-            }
-            formatModeButton = modeButton
-            addView(modeButton, matchWidth())
-            addView(space(8), matchWidth())
             val textLayout = TextInputLayout(this@MainActivity).apply {
                 hint = if (timestampMode) "[00:00 - 00:03] မြန်မာ/English စာသား" else "မြန်မာ သို့မဟုတ် English စာသား"
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
@@ -356,7 +366,6 @@ class MainActivity : Activity() {
             }
         }
 
-        addSpeedControl(page)
         if (timestampMode) addTimestampSpeedControl(page)
 
         val actions = LinearLayout(this).apply {
@@ -413,7 +422,6 @@ class MainActivity : Activity() {
             addView(space(4), matchWidth())
             addView(label("ဒီစာရင်းကို ဖုန်း၏ app သီးသန့်သိုလှောင်ခန်းမှာ သိမ်းထားပါသည်။", 13f, mutedColor), matchWidth())
         }
-        addSpeedControl(page)
         if (records.isEmpty()) {
             card(page) {
                 addView(label("အသံဖိုင် မရှိသေးပါ", 17f, inkColor, true), matchWidth())
@@ -471,6 +479,8 @@ class MainActivity : Activity() {
     private fun renderSettingsPage() {
         val page = newPage()
         addHeader(page, "ဆက်တင်များ", "အသံ pack များကို စီမံပြီး အသံအသစ်များ ထပ်ထည့်ပါ။")
+
+        addSpeedControl(page)
 
         card(page) {
             addView(label("လက်ရှိ Hugging Face model", 16f, inkColor, true), matchWidth())
@@ -541,6 +551,180 @@ class MainActivity : Activity() {
                 addView(row, matchWidth())
             }
         }
+    }
+
+    private fun renderTranscriptionPage() {
+        val page = newPage()
+        addHeader(page, "အသံမှ စာသားသို့", "Whisper ကို ဖုန်းထဲတွင် အလုပ်လုပ်စေပြီး မြန်မာ/中文 အသံကို timestamp ပါသောစာသားအဖြစ် ပြောင်းပါ။")
+        card(page) {
+            addView(label("ဘာသာစကားရွေးရန်", 16f, inkColor, true), matchWidth())
+            addView(space(8), matchWidth())
+            val languageLayout = TextInputLayout(this@MainActivity).apply {
+                hint = "အသံဘာသာစကား"
+                boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+                endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
+            }
+            val languageLabels = listOf("မြန်မာဘာသာ", "简体中文", "繁體中文")
+            val languagePicker = MaterialAutoCompleteTextView(this@MainActivity).apply {
+                inputType = android.text.InputType.TYPE_NULL
+                keyListener = null
+                setSimpleItems(languageLabels.toTypedArray())
+                val index = when {
+                    selectedTranscriptionLanguage == "my" -> 0
+                    selectedChineseScript == "Hant" -> 2
+                    else -> 1
+                }
+                setText(languageLabels[index], false)
+                setOnItemClickListener { _, _, position, _ ->
+                    when (position) {
+                        0 -> selectedTranscriptionLanguage = "my"
+                        1 -> { selectedTranscriptionLanguage = "zh"; selectedChineseScript = "Hans" }
+                        2 -> { selectedTranscriptionLanguage = "zh"; selectedChineseScript = "Hant" }
+                    }
+                }
+            }
+            languageLayout.addView(languagePicker, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(languageLayout, matchWidth())
+            addView(space(12), matchWidth())
+            addView(actionButton("အသံဖိုင်ရွေးရန်", false).apply {
+                setOnClickListener { openAudioPicker() }
+            }, matchWidth())
+            addView(space(6), matchWidth())
+            addView(label(transcriptionUri?.lastPathSegment?.substringAfterLast('/') ?: "အသံဖိုင် မရွေးရသေးပါ", 12f, mutedColor).apply {
+                maxLines = 2
+                setTextIsSelectable(true)
+            }, matchWidth())
+            addView(space(10), matchWidth())
+            val runButton = actionButton("Offline စာသားထုတ်ယူရန်", true).apply {
+                isEnabled = !busy
+                alpha = if (isEnabled) 1f else 0.6f
+                setOnClickListener { transcribeSelectedAudio() }
+            }
+            transcribeButton = runButton
+            addView(runButton, matchWidth())
+        }
+
+        card(page) {
+            addView(label("Whisper model", 15f, inkColor, true), matchWidth())
+            addView(space(4), matchWidth())
+            val ready = OfflineWhisperModelRepository(this@MainActivity).installed()
+            addView(label(if (ready) "Tiny multilingual model · суусан · offline ашиглахад бэлэн" else "Tiny multilingual model · ойролцоогоор 74 MiB · эхний удаа татна", 12f, if (ready) primaryColor else mutedColor), matchWidth())
+            addView(space(6), matchWidth())
+            addView(label("Model суусны дараа Whisper боловсруулалт төхөөрөмж дээр offline хийгдэнэ. Tiny model-ийн Burmese танилтын нарийвчлал аудио чанараас шалтгаалан өөр байж болно.", 12f, mutedColor), matchWidth())
+        }
+
+        card(page) {
+            addView(label("Timestamp-тай transcript", 16f, inkColor, true), matchWidth())
+            addView(space(8), matchWidth())
+            val outputLayout = TextInputLayout(this@MainActivity).apply {
+                hint = "Транскрипцийн үр дүн"
+                boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            }
+            val outputCount = label("${transcriptionOutput.length} / 10,000", 12f, mutedColor).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            }
+            val output = TextInputEditText(this@MainActivity).apply {
+                setText(transcriptionOutput)
+                textSize = 16f
+                gravity = Gravity.TOP or Gravity.START
+                minLines = 6
+                maxLines = Int.MAX_VALUE
+                isVerticalScrollBarEnabled = true
+                isNestedScrollingEnabled = true
+                setTextIsSelectable(true)
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+            }
+            output.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    transcriptionOutput = s?.toString() ?: ""
+                    outputCount.text = String.format(Locale.US, "%d / 10,000", s?.length ?: 0)
+                    outputCount.setTextColor(if ((s?.length ?: 0) > 10_000) errorColor else mutedColor)
+                }
+                override fun afterTextChanged(s: android.text.Editable?) = Unit
+            })
+            outputLayout.addView(output, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190)))
+            addView(outputLayout, matchWidth())
+            addView(outputCount, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)))
+            addView(space(8), matchWidth())
+            addView(actionButton("Timestamp dubbing ထဲပို့ရန်", false).apply {
+                setOnClickListener {
+                    if (transcriptionOutput.isBlank()) toast("ပို့ရန် transcript မရှိသေးပါ။")
+                    else {
+                        draftText = transcriptionOutput
+                        navigation.selectedItemId = TAB_TIMESTAMP
+                    }
+                }
+            }, matchWidth())
+        }
+        val statusCard = cardView()
+        val status = label(transcriptionStatus, 13f, mutedColor).apply { setPadding(dp(14), dp(12), dp(14), dp(12)) }
+        transcriptionStatusView = status
+        statusCard.addView(status)
+        page.addView(statusCard, matchWidth())
+        applyBusyState()
+    }
+
+    private fun openAudioPicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/*"
+        }
+        startActivityForResult(intent, REQUEST_TRANSCRIBE_AUDIO)
+    }
+
+    private fun transcribeSelectedAudio() {
+        val uri = transcriptionUri
+        if (uri == null) {
+            toast("Эхлээд аудио файл сонгоно уу.")
+            return
+        }
+        if (busy) return
+        val language = selectedTranscriptionLanguage
+        val script = selectedChineseScript
+        busy = true
+        transcriptionStatus = "Whisper model болон аудио бэлтгэж байна…"
+        applyBusyState()
+        worker.execute {
+            try {
+                val model = OfflineWhisperModelRepository(this).ensureDownloaded { received, total ->
+                    val progress = if (total > 0L) (received * 100L / total).toInt().coerceIn(1, 99) else 1
+                    val downloadedMb = received / (1024.0 * 1024.0)
+                    val totalMb = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
+                    mainHandler.post { updateTranscriptionStatus("Whisper model татаж байна: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%") }
+                }
+                mainHandler.post { updateTranscriptionStatus("Аудиог decode хийж байна…") }
+                val audio = AndroidAudioDecoder.decodeMono16k(this, uri) { progress ->
+                    mainHandler.post { updateTranscriptionStatus("Аудиог 16 kHz mono болгож байна… $progress%") }
+                }
+                mainHandler.post { updateTranscriptionStatus("Whisper offline транскрипц хийж байна…") }
+                val raw = OfflineWhisperTranscriber(model).use { it.transcribe(audio, language) }
+                val converted = if (language == "zh" && script == "Hant") {
+                    try { android.icu.text.Transliterator.getInstance("Simplified-Traditional").transliterate(raw) }
+                    catch (_: Exception) { raw }
+                } else raw
+                mainHandler.post {
+                    transcriptionOutput = converted
+                    transcriptionStatus = if (converted.isBlank()) "Яриа танигдсангүй။ Audio чанартай файлыг дахин сонгоно уу." else "Транскрипц дууслаа · ${audio.size / 16_000} сек аудио · offline"
+                    busy = false
+                    if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    transcriptionStatus = "Транскрипц амжилтгүй: ${error.message ?: "Алдаа гарлаа."}"
+                    busy = false
+                    if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
+                }
+            }
+        }
+    }
+
+    private fun updateTranscriptionStatus(message: String) {
+        transcriptionStatus = message
+        transcriptionStatusView?.text = message
     }
 
     private fun addSpeedControl(page: LinearLayout) {
@@ -643,28 +827,36 @@ class MainActivity : Activity() {
                     val total = if (event.totalBytes > 0L) " / ${"%.1f".format(Locale.US, event.totalBytes / (1024.0 * 1024.0))} MB" else " MB (စုစုပေါင်း အရွယ်အစားမသိ)"
                     mainHandler.post { setSpeechProgress(percent, "${event.fileName}: ${"%.1f".format(Locale.US, mb)}$total · $percent%") }
                 }
-                temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
+                val createdRecords = ArrayList<AudioRecord>()
                 OfflineTtsEngine(files).use { engine ->
                     if (timestampModeForJob) {
-                        TimestampDubRenderer.render(
+                        val segments = TimestampDubRenderer.renderSegments(
                             transcript = text,
                             engine = engine,
-                            outputFile = temporary!!,
+                            outputDirectory = cacheDir,
                             speedFactorProvider = { timestampSpeedFactor }
                         ) { percent, message -> mainHandler.post { setSpeechProgress(percent, message) } }
+                        segments.forEachIndexed { index, pair ->
+                            val segment = pair.first
+                            val label = "[${formatTranscriptTime(segment.startMs)} - ${formatTranscriptTime(segment.endMs)}] ${segment.text}"
+                            createdRecords.add(historyRepository.add(pair.second, label, selected))
+                            pair.second.delete()
+                            mainHandler.post { setSpeechProgress(((index + 1) * 100 / segments.size).coerceIn(1, 100), "သီးခြားအသံဖိုင် ${index + 1}/${segments.size} ကို History ထဲသိမ်းနေသည်…") }
+                        }
                     } else {
+                        temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
                         engine.synthesize(text, temporary!!) { percent ->
                             mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
                         }
+                        createdRecords.add(historyRepository.add(temporary!!, text, selected))
                     }
                 }
-                val record = historyRepository.add(temporary!!, text, selected)
-                temporary!!.delete()
+                temporary?.delete()
                 mainHandler.post {
-                    lastOutput = record
+                    lastOutput = createdRecords.firstOrNull() ?: historyRepository.all().firstOrNull()
                     busy = false
-                    setSpeechProgress(100, "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
-                    if (currentTab == TAB_CREATE) renderCreatePage()
+                    setSpeechProgress(100, if (timestampModeForJob) "Timestamp အလိုက် အသံပိုင်း ${createdRecords.size} ခု သီးခြားသိမ်းပြီးပါပြီ။ 100%" else "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
+                    if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) renderCreatePage()
                     else if (currentTab == TAB_HISTORY) renderHistoryPage()
                     applyBusyState()
                 }
@@ -674,7 +866,7 @@ class MainActivity : Activity() {
                     busy = false
                     showStatus("အသံဖိုင် ဖန်တီးမရပါ။ ${error.message ?: "အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်။"}")
                     applyBusyState()
-                    if (currentTab == TAB_CREATE) renderCreatePage()
+                    if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) renderCreatePage()
                 }
             }
         }
@@ -970,6 +1162,12 @@ class MainActivity : Activity() {
         return String.format(Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
     }
 
+    private fun formatTranscriptTime(milliseconds: Long): String {
+        val seconds = (milliseconds.coerceAtLeast(0L) / 1000L).toInt()
+        return if (seconds >= 3600) String.format(Locale.US, "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+        else String.format(Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
     private fun applyPlaybackSpeed() {
         val active = player ?: return
         if (Build.VERSION.SDK_INT < 23) return
@@ -1057,6 +1255,12 @@ class MainActivity : Activity() {
                 }
             }
             REQUEST_IMPORT_CATALOG -> importCatalog(uri)
+            REQUEST_TRANSCRIBE_AUDIO -> {
+                transcriptionUri = uri
+                try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+                transcriptionStatus = "အသံဖိုင်ရွေးပြီးပါပြီ။ ဘာသာစကားစစ်ဆေးပြီး Offline စာသားထုတ်ယူရန် နှိပ်ပါ။"
+                if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage()
+            }
         }
     }
 
@@ -1151,6 +1355,8 @@ class MainActivity : Activity() {
         formatModeButton?.isEnabled = !busy
         previewButton?.isEnabled = !busy
         previewButton?.alpha = if (busy) 0.6f else 1f
+        transcribeButton?.isEnabled = !busy
+        transcribeButton?.alpha = if (busy) 0.6f else 1f
         listenButton?.isEnabled = !busy && lastOutput != null
         listenButton?.alpha = if (listenButton?.isEnabled == true) 1f else 0.55f
         progressBar?.visibility = if (busy) View.VISIBLE else View.GONE
@@ -1188,8 +1394,11 @@ class MainActivity : Activity() {
         private const val TAB_CREATE = 1
         private const val TAB_HISTORY = 2
         private const val TAB_SETTINGS = 3
+        private const val TAB_TIMESTAMP = 4
+        private const val TAB_TRANSCRIBE = 5
         private const val REQUEST_EXPORT_AUDIO = 601
         private const val REQUEST_IMPORT_CATALOG = 602
+        private const val REQUEST_TRANSCRIBE_AUDIO = 603
         private const val PLAYBACK_PROGRESS_MAX = 1_000
         private const val MAX_CATALOG_BYTES = 512 * 1024
     }

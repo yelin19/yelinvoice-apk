@@ -12,11 +12,24 @@ android {
         applicationId = "com.yelinvoice.offline"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.10.0"
+        versionCode = 11
+        versionName = "0.11.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments += listOf(
+                    "-DWHISPER_BUILD_TESTS=OFF",
+                    "-DWHISPER_BUILD_EXAMPLES=OFF",
+                    "-DWHISPER_BUILD_SERVER=OFF",
+                    "-DGGML_OPENMP=OFF",
+                    "-DGGML_NATIVE=OFF",
+                    "-DCMAKE_BUILD_TYPE=Release"
+                )
+            }
         }
     }
 
@@ -27,6 +40,14 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    ndkVersion = "25.2.9519653"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/whisper-android/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 }
 
