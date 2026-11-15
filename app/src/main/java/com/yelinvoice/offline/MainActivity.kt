@@ -288,10 +288,16 @@ class MainActivity : Activity() {
                 }
             }
             textInput = edit
+            val characterCount = label("0 / 10,000", 12f, mutedColor).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                contentDescription = "စာလုံးရေ"
+            }
             edit.addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     draftText = s?.toString() ?: ""
+                    characterCount.text = String.format(Locale.US, "%d / 10,000", s?.length ?: 0)
+                    characterCount.setTextColor(if ((s?.length ?: 0) > 10_000) errorColor else mutedColor)
                 }
                 override fun afterTextChanged(s: android.text.Editable?) = Unit
             })
@@ -299,7 +305,16 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(150)
             ))
             addView(textLayout, matchWidth())
-            val resizeHandle = label("↕  အကွက်အမြင့်ပြောင်းရန်", 12f, mutedColor).apply {
+            characterCount.text = String.format(Locale.US, "%d / 10,000", edit.text?.length ?: 0)
+            val countRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(4), dp(2), dp(4), dp(2))
+                addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+                addView(characterCount, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)))
+            }
+            addView(countRow, matchWidth())
+            val resizeHandle = label("⋮  အကွက်အမြင့်ပြောင်းရန်", 12f, mutedColor).apply {
                 gravity = Gravity.CENTER_VERTICAL or Gravity.END
                 setPadding(dp(8), dp(4), dp(4), dp(4))
                 setOnTouchListener(object : View.OnTouchListener {
