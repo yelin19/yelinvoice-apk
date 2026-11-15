@@ -87,12 +87,6 @@ class MainActivity : Activity() {
     private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
     private var transcriptionStatusView: TextView? = null
     private var transcribeButton: MaterialButton? = null
-    private var selectedTranscriptionLanguage = "my"
-    private var selectedChineseScript = "Hans"
-    private var transcriptionUri: Uri? = null
-    private var transcriptionOutput = ""
-    private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
-    private var transcribeButton: MaterialButton? = null
     private var statusMessage = "အသံရွေးပြီး စာသားထည့်ပါ။ ပထမဆုံးအသုံးပြုချိန်တွင် voice model ဒေါင်းလုဒ်လုပ်ပါမည်။"
 
     private val prefs by lazy { getSharedPreferences("yelinvoice-settings", MODE_PRIVATE) }
