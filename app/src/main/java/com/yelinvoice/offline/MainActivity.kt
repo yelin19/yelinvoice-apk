@@ -265,13 +265,27 @@ class MainActivity : Activity() {
                 setText(draftText)
                 textSize = 17f
                 minLines = 5
-                maxLines = 10
+                maxLines = Int.MAX_VALUE
                 gravity = Gravity.TOP or Gravity.START
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                isNestedScrollingEnabled = true
                 inputType = android.text.InputType.TYPE_CLASS_TEXT or
                     android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                     android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                 imeOptions = EditorInfo.IME_FLAG_NO_ENTER_ACTION
                 setPadding(dp(4), dp(8), dp(4), dp(8))
+                setOnTouchListener { view, event ->
+                    // Keep the outer page ScrollView from stealing vertical
+                    // swipes that the user starts inside this text editor.
+                    when (event.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN,
+                        android.view.MotionEvent.ACTION_MOVE -> view.parent?.requestDisallowInterceptTouchEvent(true)
+                        android.view.MotionEvent.ACTION_UP,
+                        android.view.MotionEvent.ACTION_CANCEL -> view.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                    false // Let EditText handle cursor movement and scrolling.
+                }
             }
             textInput = edit
             edit.addTextChangedListener(object : android.text.TextWatcher {
