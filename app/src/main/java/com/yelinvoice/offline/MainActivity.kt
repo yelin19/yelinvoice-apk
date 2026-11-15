@@ -844,6 +844,7 @@ class MainActivity : Activity() {
                             transcript = text,
                             engine = engine,
                             outputFile = temporary!!,
+                            speedFactorProvider = { timestampSpeedFactor }
                         ) { percent, message -> mainHandler.post { setSpeechProgress(percent, message) } }
                     } else {
                         engine.synthesize(text, temporary!!) { percent ->
