@@ -6,7 +6,7 @@ from frontend.my_numbers import verbalize
 from frontend.nara_frontend import phonemize, prepare_names
 
 _LATIN = re.compile(r"[A-Za-z]")
-_LATIN_RUN = re.compile(r"[A-Za-z][A-Za-z'. -]*[A-Za-z]|[A-Za-z]")
+_ENGLISH_TOKENS = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)*|[^A-Za-z]+")
 _ENGLISH_G2P = None
 _NLTK_DATA_READY = False
 
@@ -22,10 +22,22 @@ _ARPA_TO_IPA = {
 }
 _VOWELS = {"AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY", "IH", "IY", "OW", "OY", "UH", "UW"}
 _PUNCT = {";": ",", ":": ",", "—": ",", "–": ","}
+# Used only for words absent from CMUdict; spelling them is preferable to silently
+# dropping a proper name or newly coined English word.
+_LETTER_NAMES = {
+    "a": ["EY"], "b": ["B", "IY"], "c": ["S", "IY"], "d": ["D", "IY"],
+    "e": ["IY"], "f": ["EH", "F"], "g": ["JH", "IY"], "h": ["EY", "CH"],
+    "i": ["AY"], "j": ["JH", "EY"], "k": ["K", "EY"], "l": ["EH", "L"],
+    "m": ["EH", "M"], "n": ["EH", "N"], "o": ["OW"], "p": ["P", "IY"],
+    "q": ["K", "Y", "UW"], "r": ["AA", "R"], "s": ["EH", "S"],
+    "t": ["T", "IY"], "u": ["Y", "UW"], "v": ["V", "IY"],
+    "w": ["D", "AH", "B", "AH", "L", "Y", "UW"], "x": ["EH", "K", "S"],
+    "y": ["W", "AY"], "z": ["Z", "IY"],
+}
 
 
 def configure_english_data(data_directory):
-    """Point NLTK at the resources bundled in APK assets; never fetch data online."""
+    """Point NLTK at the CMU dictionary bundled in APK assets; never fetch online."""
     global _NLTK_DATA_READY
     import nltk
 
@@ -34,11 +46,10 @@ def configure_english_data(data_directory):
         nltk.data.path.insert(0, root)
     try:
         nltk.data.find("corpora/cmudict.zip")
-        nltk.data.find("taggers/averaged_perceptron_tagger.zip")
     except LookupError as error:
-        raise ValueError("အင်္ဂလိပ်အသံထွက်အတွက် လိုအပ်သော offline data ဖိုင် မတွေ့ပါ။") from error
+        raise ValueError("အင်္ဂလိပ်အသံထွက်အတွက် လိုအပ်သော offline CMU dictionary ဖိုင် မတွေ့ပါ။") from error
 
-    # g2p-en checks these local resources during import. Prevent any fallback download.
+    # Never allow NLTK to fall back to a network download.
     nltk.download = lambda *args, **kwargs: False
     _NLTK_DATA_READY = True
 
@@ -49,10 +60,10 @@ def _english_g2p():
         raise ValueError("အင်္ဂလိပ်စာအတွက် offline pronunciation data ကို အရင်ပြင်ဆင်ပါ။")
     if _ENGLISH_G2P is None:
         try:
-            from g2p_en import G2p
-            _ENGLISH_G2P = G2p()
+            from nltk.corpus import cmudict
+            _ENGLISH_G2P = cmudict.dict()
         except Exception as error:
-            raise ValueError("အင်္ဂလိပ်အသံထွက်မော်ဒယ်ကို စတင်မရပါ။") from error
+            raise ValueError("အင်္ဂလိပ်အသံထွက် dictionary ကို ဖွင့်မရပါ။") from error
     return _ENGLISH_G2P
 
 
@@ -79,15 +90,28 @@ def _arpabet_to_ipa(tokens):
     return "".join(output)
 
 
+def _spell_unknown_word(word):
+    phones = []
+    for character in word.lower():
+        phones.extend(_LETTER_NAMES.get(character, []))
+    return _arpabet_to_ipa(phones)
+
+
 def _english_to_ipa(text):
-    g2p = _english_g2p()
+    dictionary = _english_g2p()
     output = []
-    last = 0
-    for match in _LATIN_RUN.finditer(text):
-        output.append(text[last:match.start()])
-        output.append(_arpabet_to_ipa(g2p(match.group(0))))
-        last = match.end()
-    output.append(text[last:])
+    for token in _ENGLISH_TOKENS.findall(text):
+        if not token or not token[0].isalpha():
+            output.append("".join(_PUNCT.get(character, character) for character in token))
+            continue
+
+        word = token.lower().replace("’", "'")
+        pronunciations = dictionary.get(word)
+        if pronunciations:
+            output.append(_arpabet_to_ipa(pronunciations[0]))
+        else:
+            # Preserve unknown names/acronyms offline by spelling them out.
+            output.append(_spell_unknown_word(word.replace("'", "")))
     return re.sub(r" {2,}", " ", "".join(output)).strip()
 
 
