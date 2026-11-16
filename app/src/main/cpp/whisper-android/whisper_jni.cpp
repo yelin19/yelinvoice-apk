@@ -48,7 +48,8 @@ Java_com_yelinvoice_offline_WhisperNative_transcribe(JNIEnv *env, jobject, jlong
     jfloat *samples = env->GetFloatArrayElements(audio, nullptr);
     const jsize sampleCount = env->GetArrayLength(audio);
 
-    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    params.beam_search.beam_size = 5;
     params.print_realtime = false;
     params.print_progress = false;
     params.print_timestamps = false;
@@ -57,7 +58,7 @@ Java_com_yelinvoice_offline_WhisperNative_transcribe(JNIEnv *env, jobject, jlong
     params.language = lang;
     params.n_threads = std::max(1, std::min(4, static_cast<int>(threads)));
     params.offset_ms = 0;
-    params.no_context = true;
+    params.no_context = false;
     params.single_segment = false;
     params.token_timestamps = false;
 

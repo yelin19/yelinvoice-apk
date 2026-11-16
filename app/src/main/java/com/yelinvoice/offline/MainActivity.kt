@@ -607,12 +607,26 @@ class MainActivity : Activity() {
         card(page) {
             addView(label("Whisper အသံမှတ်သားစနစ်", 15f, inkColor, true), matchWidth())
             addView(space(4), matchWidth())
-            val ready = OfflineWhisperModelRepository(this@MainActivity).installed()
-            addView(label(if (ready) "ဘာသာစကားစုံသုံး မော်ဒယ်အသေး · ထည့်သွင်းပြီး · အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ" else "ဘာသာစကားစုံသုံး မော်ဒယ်အသေး · 74 MiB ခန့် · ပထမဆုံးအကြိမ် ဒေါင်းလုဒ်လုပ်ပါမည်", 12f, if (ready) primaryColor else mutedColor), matchWidth())
+            val whisperRepository = OfflineWhisperModelRepository(this@MainActivity)
+            val ready = whisperRepository.installed()
+            val bundled = whisperRepository.bundledAvailable()
+            val modelStatus = when {
+                ready -> "Whisper large-v3-turbo · ထည့်သွင်းပြီး · အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ"
+                bundled -> "Whisper large-v3-turbo · APK ထဲတွင်ပါပြီး · 547 MiB ခန့် · ပထမဆုံးအသုံးပြုချိန်တွင် ဖုန်းထဲသို့ ကူးယူပါမည်"
+                else -> "Whisper large-v3-turbo · 547 MiB ခန့် · အင်တာနက်လိုအပ်ပါမည်"
+            }
+            addView(label(modelStatus, 12f, if (ready) primaryColor else mutedColor), matchWidth())
             addView(space(6), matchWidth())
-            addView(label("မော်ဒယ်ဒေါင်းလုဒ်ပြီးပါက အသံမှတ်သားခြင်းကို ဖုန်းထဲတွင်ပင် အင်တာနက်မလိုဘဲ လုပ်ဆောင်ပါမည်။ မော်ဒယ်အသေးဖြစ်သောကြောင့် မြန်မာစကားသိရှိမှု တိကျမှုသည် အသံအရည်အသွေးအပေါ် မူတည်နိုင်ပါသည်။", 12f, mutedColor), matchWidth())
+            addView(label("တရုတ်စာကို ပိုမိုတိကျစွာ မှတ်သားနိုင်ရန် အသုံးပြုသည့် ဘာသာစကားစုံ မော်ဒယ်ကြီးဖြစ်ပါသည်။ ပထမဆုံးအသုံးပြုချိန်တွင် APK ထဲမှ App သိုလှောင်ခန်းသို့ ကူးယူပါမည်။ APK နှင့် မော်ဒယ်အတွက် စုစုပေါင်း 1.1 GiB ခန့် နေရာလိုနိုင်ပါသည်။ RAM နည်းသောဖုန်းတွင် လုပ်ဆောင်ချိန်ကြာနိုင်သလို စနစ်က App ကို ပိတ်နိုင်ပါသည်။", 12f, mutedColor), matchWidth())
             addView(space(10), matchWidth())
-            val downloadButton = actionButton(if (ready) "Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ" else "Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်ရန်", filled = !ready).apply {
+            val downloadButton = actionButton(
+                when {
+                    ready -> "Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ"
+                    bundled -> "APK ထဲမှ Whisper မော်ဒယ် ထည့်သွင်းရန်"
+                    else -> "Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်ရန်"
+                },
+                filled = !ready
+            ).apply {
                 isEnabled = !ready && !busy
                 alpha = if (isEnabled) 1f else 0.6f
                 setOnClickListener { downloadWhisperModel() }
@@ -736,7 +750,7 @@ class MainActivity : Activity() {
             return
         }
         busy = true
-        transcriptionStatus = "Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်ရန် ပြင်ဆင်နေပါသည်…"
+        transcriptionStatus = "APK ထဲမှ Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ထည့်သွင်းရန် ပြင်ဆင်နေပါသည်…"
         applyBusyState()
         worker.execute {
             try {
@@ -745,19 +759,19 @@ class MainActivity : Activity() {
                     val downloadedMb = received / (1024.0 * 1024.0)
                     val totalText = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
                     mainHandler.post {
-                        updateTranscriptionStatus("Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်နေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalText · $percent%")
+                        updateTranscriptionStatus("Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ကူးယူနေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalText · $percent%")
                     }
                 }
                 mainHandler.post {
                     busy = false
-                    transcriptionStatus = "Whisper မော်ဒယ် ဒေါင်းလုဒ်ပြီးပါပြီ။ အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ။"
+                    transcriptionStatus = "Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ။ အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ။"
                     if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
-                    toast("Whisper မော်ဒယ် ဒေါင်းလုဒ်ပြီးပါပြီ။")
+                    toast("Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ။")
                 }
             } catch (error: Exception) {
                 mainHandler.post {
                     busy = false
-                    transcriptionStatus = "Whisper မော်ဒယ် ဒေါင်းလုဒ်မအောင်မြင်ပါ။ ${error.message ?: "ကွန်ရက်ကို စစ်ဆေးပါ။"}"
+                    transcriptionStatus = "Whisper မော်ဒယ် ထည့်သွင်းမရပါ။ ${error.message ?: "ဖုန်းသိုလှောင်ခန်းကို စစ်ဆေးပါ။"}"
                     if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
                     toast(transcriptionStatus)
                 }
@@ -783,7 +797,7 @@ class MainActivity : Activity() {
                     val progress = if (total > 0L) (received * 100L / total).toInt().coerceIn(1, 99) else 1
                     val downloadedMb = received / (1024.0 * 1024.0)
                     val totalMb = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
-                    mainHandler.post { updateTranscriptionStatus("Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်နေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%") }
+                    mainHandler.post { updateTranscriptionStatus("Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ကူးယူနေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%") }
                 }
                 mainHandler.post { updateTranscriptionStatus("အသံဖိုင်ကို ဖတ်ရှုရန် ပြင်ဆင်နေပါသည်…") }
                 val audio = AndroidAudioDecoder.decodeMono16k(this, uri) { progress ->

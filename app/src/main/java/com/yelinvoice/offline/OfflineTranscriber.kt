@@ -9,6 +9,7 @@ import android.os.Build
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -25,13 +26,48 @@ internal object WhisperNative {
 
 internal class OfflineWhisperModelRepository(private val context: Context) {
     private val model = File(File(context.filesDir, "models"), MODEL_NAME)
+    private val obsoleteTinyModel = File(File(context.filesDir, "models"), "ggml-tiny.bin")
 
-    fun installed(): Boolean = model.isFile && model.length() > 1_000_000L
+    fun bundledAvailable(): Boolean = bundledAssetSize() != null
+
+    fun installed(): Boolean = model.isFile && model.length() >= MIN_MODEL_BYTES
 
     fun ensureDownloaded(onProgress: (Long, Long) -> Unit): File {
-        if (installed()) return model
-        model.parentFile?.mkdirs()
+        if (installed()) {
+            obsoleteTinyModel.delete()
+            return model
+        }
+        obsoleteTinyModel.delete()
+        check(model.parentFile?.let { it.exists() || it.mkdirs() } == true) {
+            "Whisper မော်ဒယ်သိမ်းရန် ဖုန်းသိုလှောင်ခန်း မပြင်ဆင်နိုင်ပါ။"
+        }
         val temporary = File(model.parentFile, "$MODEL_NAME.part")
+        try {
+            val bundledSize = bundledAssetSize()
+            if (bundledSize != null) {
+                context.assets.open(MODEL_ASSET).use { input ->
+                    copyAndVerify(input, temporary, bundledSize, onProgress)
+                }
+            } else {
+                downloadFallback(temporary, onProgress)
+            }
+            check(temporary.renameTo(model)) { "Whisper model файлыг хадгалж чадсангүй." }
+            return model
+        } catch (error: Exception) {
+            temporary.delete()
+            throw error
+        }
+    }
+
+    private fun bundledAssetSize(): Long? = try {
+        context.assets.openFd(MODEL_ASSET).use { descriptor ->
+            descriptor.length.takeIf { it >= MIN_MODEL_BYTES }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun downloadFallback(destination: File, onProgress: (Long, Long) -> Unit) {
         val connection = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 45_000
@@ -41,41 +77,44 @@ internal class OfflineWhisperModelRepository(private val context: Context) {
         try {
             connection.connect()
             check(connection.responseCode in 200..299) { "Whisper model таталт амжилтгүй: HTTP ${connection.responseCode}" }
-            val expectedSize = connection.contentLengthLong
-            var received = 0L
-            val digest = MessageDigest.getInstance("SHA-1")
-            BufferedInputStream(connection.inputStream).use { input ->
-                FileOutputStream(temporary).use { output ->
-                    val buffer = ByteArray(128 * 1024)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        output.write(buffer, 0, count)
-                        digest.update(buffer, 0, count)
-                        received += count
-                        onProgress(received, expectedSize)
-                    }
-                    output.fd.sync()
-                }
-            }
-            check(expectedSize <= 0L || received == expectedSize) { "Whisper model дутуу татагдсан байна." }
-            val sha1 = digest.digest().joinToString("") { "%02x".format(it) }
-            check(sha1.equals(MODEL_SHA1, ignoreCase = true)) { "Whisper model checksum таарахгүй байна. Дахин татаж үзнэ үү." }
-            check(temporary.renameTo(model)) { "Whisper model файлыг хадгалж чадсангүй." }
-            return model
-        } catch (error: Exception) {
-            temporary.delete()
-            throw error
+            copyAndVerify(connection.inputStream, destination, connection.contentLengthLong, onProgress)
         } finally {
             connection.disconnect()
         }
     }
 
+    private fun copyAndVerify(inputStream: InputStream, destination: File, expectedSize: Long, onProgress: (Long, Long) -> Unit) {
+        var received = 0L
+        val digest = MessageDigest.getInstance("SHA-1")
+        BufferedInputStream(inputStream).use { input ->
+            FileOutputStream(destination).use { output ->
+                val buffer = ByteArray(128 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                    digest.update(buffer, 0, count)
+                    received += count
+                    onProgress(received, expectedSize)
+                }
+                output.fd.sync()
+            }
+        }
+        check(received >= MIN_MODEL_BYTES && (expectedSize <= 0L || received == expectedSize)) {
+            "Whisper model ဖိုင် မပြည့်စုံပါ။"
+        }
+        val sha1 = digest.digest().joinToString("") { "%02x".format(it) }
+        check(sha1.equals(MODEL_SHA1, ignoreCase = true)) {
+            "Whisper model checksum မကိုက်ပါ။"
+        }
+    }
+
     companion object {
-        // whisper.cpp's official multilingual tiny model: approximately 75 MiB.
-        private const val MODEL_NAME = "ggml-tiny.bin"
-        private const val MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
-        private const val MODEL_SHA1 = "bd577a113a864445d4c299885e0cb97d4ba92b5f"
+        private const val MODEL_NAME = "ggml-large-v3-turbo-q5_0.bin"
+        private const val MODEL_ASSET = "whisper/ggml-large-v3-turbo-q5_0.bin"
+        private const val MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"
+        private const val MODEL_SHA1 = "e050f7970618a659205450ad97eb95a18d69c9ee"
+        private const val MIN_MODEL_BYTES = 500L * 1024L * 1024L
     }
 }
 
