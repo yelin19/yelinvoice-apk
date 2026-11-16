@@ -967,7 +967,6 @@ class MainActivity : Activity() {
                     mainHandler.post { setSpeechProgress(percent, "${event.fileName}: ${"%.1f".format(Locale.US, mb)}$total · $percent%") }
                 }
                 temporary = File(cacheDir, "speech-${System.currentTimeMillis()}.wav")
-                var record: AudioRecord? = null
                 OfflineTtsEngine(files).use { engine ->
                     if (timestampModeForJob) {
                         TimestampDubRenderer.render(
@@ -982,16 +981,19 @@ class MainActivity : Activity() {
                         }
                     }
                 }
-                record = historyRepository.add(temporary!!, text, selected)
+                val record = historyRepository.add(temporary!!, text, selected)
+                check(historyRepository.all().any { it.id == record.id && it.file.isFile }) {
+                    "အသံဖိုင်ကို အသံဖိုင်များစာရင်းထဲ ထည့်သွင်းအတည်ပြုမရပါ။"
+                }
                 temporary?.delete()
                 mainHandler.post {
                     lastOutput = record
                     busy = false
                     setSpeechProgress(100, if (timestampModeForJob) "Timestamp အလိုက် အသံတစ်ဖိုင်တည်း ဖန်တီးပြီးပါပြီ။ 100%" else "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
-                    if (currentTab == TAB_CREATE || currentTab == TAB_TIMESTAMP) {
+                    if (navigation.selectedItemId == TAB_HISTORY) {
+                        renderPage(TAB_HISTORY)
+                    } else {
                         navigation.selectedItemId = TAB_HISTORY
-                    } else if (currentTab == TAB_HISTORY) {
-                        renderHistoryPage()
                     }
                     applyBusyState()
                 }
