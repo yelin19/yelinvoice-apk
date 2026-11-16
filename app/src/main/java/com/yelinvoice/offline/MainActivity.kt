@@ -978,8 +978,7 @@ class MainActivity : Activity() {
                         TimestampDubRenderer.render(
                             transcript = text,
                             engine = engine,
-                            outputFile = temporary!!,
-                            speedFactorProvider = { timestampSpeedFactor }
+                            outputFile = temporary!!
                         ) { percent, message -> mainHandler.post { setSpeechProgress(percent.coerceIn(1, 99), message) } }
                     } else {
                         engine.synthesize(text, temporary!!) { percent ->

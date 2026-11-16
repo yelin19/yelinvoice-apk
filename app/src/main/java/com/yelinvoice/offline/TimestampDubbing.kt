@@ -80,9 +80,9 @@ object TimestampTranscriptParser {
 
 /**
  * Renders timestamped speech onto a silent 24 kHz mono WAV timeline.
- * Overlong utterances are shortened with WSOLA time stretching, which changes
- * duration while preserving pitch. Words are never cut off. Unused portions of
- * each slot and all gaps between slots stay silent.
+ * Each utterance is fitted to its complete requested slot with WSOLA while
+ * preserving pitch. Longer speech is accelerated and shorter speech is slowed;
+ * words are never cut off and the rendered segment ends exactly at endMs.
  */
 object TimestampDubRenderer {
     private const val SAMPLE_RATE = 24_000
@@ -92,7 +92,6 @@ object TimestampDubRenderer {
         transcript: String,
         engine: OfflineTtsEngine,
         outputFile: File,
-        speedFactorProvider: () -> Float = { 1.0f },
         onProgress: (Int, String) -> Unit = { _, _ -> }
     ) {
         val segments = TimestampTranscriptParser.parse(transcript)
@@ -115,19 +114,16 @@ object TimestampDubRenderer {
                     engine.synthesize(segment.text, chunkFile)
                     var samples = readPcm16Wav(chunkFile)
                     val slotFrames = (segment.slotMs * SAMPLE_RATE / 1000.0).roundToInt().coerceAtLeast(1)
-                    val selectedFactor = speedFactorProvider().coerceIn(1.0f, 2.0f)
-                    val factorTargetFrames = (samples.size / selectedFactor).roundToInt().coerceAtLeast(1)
-                    val targetFrames = minOf(slotFrames, factorTargetFrames)
-                    if (samples.size > targetFrames) {
+                    val targetFrames = slotFrames
+                    if (samples.size != targetFrames) {
                         val originalMs = samples.size * 1000.0 / SAMPLE_RATE
                         val speed = samples.size.toDouble() / targetFrames
                         samples = WsolaTimeStretch.fit(samples, targetFrames)
                         val shownSpeed = String.format(java.util.Locale.US, "%.2f×", speed)
-                        onProgress(percentBefore, "စာကြောင်း ${index + 1}: ${originalMs.toInt()} ms ကို $shownSpeed အရှိန်မြှင့်နေသည်…")
-                        require(samples.size <= slotFrames) {
-                            "စာကြောင်း ${segment.lineNumber} ကို အချိန်အတွင်း အပြည့်ထည့်မရပါ။ အသံဖြတ်မည့်အစား လုပ်ငန်းစဉ်ရပ်လိုက်သည်။"
-                        }
+                        val paceText = if (speed > 1.0) "အရှိန်မြှင့်" else "အရှိန်လျှော့"
+                        onProgress(percentBefore, "စာကြောင်း ${index + 1}: ${originalMs.toInt()} ms ကို $shownSpeed $paceTextပြီး အချိန်ကွက်အပြည့် ညှိနေသည်…")
                     }
+                    check(samples.size == slotFrames) { "စာကြောင်း ${segment.lineNumber} ၏ အသံကြာချိန်ကို သတ်မှတ်ထားသော အချိန်ကွက်နှင့် ကိုက်ညီအောင် မညှိနိုင်ပါ။" }
                     val startFrame = (segment.startMs * SAMPLE_RATE / 1000.0).roundToInt().toLong()
                     mixPcm16(timeline, startFrame, samples)
                 } finally {
@@ -237,7 +233,7 @@ object WsolaTimeStretch {
 
     fun fit(input: ShortArray, targetFrames: Int): ShortArray {
         require(input.isNotEmpty() && targetFrames > 0) { "အသံအချက်အလက် မရှိပါ။" }
-        if (input.size <= targetFrames) return input
+        if (input.size == targetFrames) return input
         val speed = input.size.toDouble() / targetFrames
         val window = SAMPLE_RATE * WINDOW_MS / 1000
         val hop = SAMPLE_RATE * SYNTHESIS_HOP_MS / 1000
