@@ -17,11 +17,15 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.floor
 
+internal fun interface WhisperProgressCallback {
+    fun onProgress(percent: Int)
+}
+
 internal object WhisperNative {
     init { System.loadLibrary("yelinvoice_whisper") }
     external fun createContext(modelPath: String): Long
     external fun freeContext(handle: Long)
-    external fun transcribe(handle: Long, audio: FloatArray, language: String, threads: Int): String
+    external fun transcribe(handle: Long, audio: FloatArray, language: String, threads: Int, callback: WhisperProgressCallback): String
 }
 
 internal class OfflineWhisperModelRepository(private val context: Context) {
@@ -51,7 +55,7 @@ internal class OfflineWhisperModelRepository(private val context: Context) {
             } else {
                 downloadFallback(temporary, onProgress)
             }
-            check(temporary.renameTo(model)) { "Whisper model файлыг хадгалж чадсангүй." }
+            check(temporary.renameTo(model)) { "Whisper မော်ဒယ်ဖိုင်ကို သိမ်းဆည်းမရပါ။" }
             return model
         } catch (error: Exception) {
             temporary.delete()
@@ -76,7 +80,7 @@ internal class OfflineWhisperModelRepository(private val context: Context) {
         }
         try {
             connection.connect()
-            check(connection.responseCode in 200..299) { "Whisper model таталт амжилтгүй: HTTP ${connection.responseCode}" }
+            check(connection.responseCode in 200..299) { "Whisper မော်ဒယ်ကို ဒေါင်းလုဒ်လုပ်မရပါ: HTTP ${connection.responseCode}" }
             copyAndVerify(connection.inputStream, destination, connection.contentLengthLong, onProgress)
         } finally {
             connection.disconnect()
@@ -147,7 +151,7 @@ internal object AndroidAudioDecoder {
 
             val sourceRate = audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             val sourceChannels = audioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceAtLeast(1)
-            require(sourceRate in 8_000..192_000) { "Audio sample rate дэмжигдэхгүй байна: $sourceRate Hz" }
+            require(sourceRate in 8_000..192_000) { "ဤအသံဖိုင်၏ sample rate ကို မပံ့ပိုးပါ: $sourceRate Hz" }
             val estimatedDuration = if (audioFormat.containsKey(MediaFormat.KEY_DURATION)) {
                 (audioFormat.getLong(MediaFormat.KEY_DURATION) / 1_000_000L).coerceIn(0, MAX_AUDIO_SECONDS.toLong())
             } else 0L
@@ -180,7 +184,7 @@ internal object AndroidAudioDecoder {
                         val decodedFormat = codec.outputFormat
                         if (decodedFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
                             val actualRate = decodedFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-                            require(actualRate == sourceRate) { "Audio-ийн sample rate өөрчлөгдсөн; энэ файлыг боловсруулах боломжгүй." }
+                            require(actualRate == sourceRate) { "အသံဖိုင်၏ sample rate ပြောင်းလဲသွားသောကြောင့် ဆက်လက်လုပ်ဆောင်၍မရပါ။" }
                         }
                     }
                     else -> if (outputIndex >= 0) {
@@ -206,7 +210,7 @@ internal object AndroidAudioDecoder {
                             }
                             sourceFrames += frames
                             require(sourceFrames <= sourceRate.toLong() * MAX_AUDIO_SECONDS) {
-                                "Audio 30 минутээс урт байна. Богино хэсгээр хувааж сонгоно уу."
+                                "အသံဖိုင်သည် မိနစ် ၃၀ ထက် ပိုရှည်နေပါသည်။ ပိုတိုသော အပိုင်းကို ရွေးပါ။"
                             }
                             if (estimatedDuration > 0L) {
                                 onProgress((sourceFrames * 100L / (sourceRate.toLong() * estimatedDuration)).toInt().coerceIn(1, 99))
@@ -262,7 +266,7 @@ internal object AndroidAudioDecoder {
 
         fun toArray(): FloatArray {
             val samples = output.toArray()
-            require(samples.isNotEmpty()) { "Audio track хоосон байна." }
+            require(samples.isNotEmpty()) { "အသံဖိုင်တွင် ဖွင့်ဖတ်နိုင်သော အသံမရှိပါ။" }
             return samples
         }
     }
@@ -270,14 +274,19 @@ internal object AndroidAudioDecoder {
 
 internal class OfflineWhisperTranscriber(modelFile: File) : AutoCloseable {
     private var context = WhisperNative.createContext(modelFile.absolutePath)
-    init { check(context != 0L) { "Whisper model-ийг нээж чадсангүй." } }
+    init { check(context != 0L) { "Whisper မော်ဒယ်ကို ဖွင့်၍မရပါ။" } }
 
-    fun transcribe(audio16k: FloatArray, languageCode: String): String {
-        check(context != 0L) { "Whisper engine ажиллахгүй байна." }
+    fun transcribe(audio16k: FloatArray, languageCode: String, onProgress: (Int) -> Unit): String {
+        check(context != 0L) { "Whisper စနစ် အလုပ်မလုပ်ပါ။" }
         require(languageCode == "my" || languageCode == "zh") { "Дэмжигдэх хэлээ сонгоно уу." }
-        require(audio16k.isNotEmpty()) { "Audio хоосон байна." }
-        return WhisperNative.transcribe(context, audio16k, languageCode,
-            Runtime.getRuntime().availableProcessors().coerceIn(1, 4))
+        require(audio16k.isNotEmpty()) { "အသံဖိုင်တွင် ဖတ်ရှုနိုင်သော အချက်အလက်မရှိပါ။" }
+        return WhisperNative.transcribe(
+            context,
+            audio16k,
+            languageCode,
+            Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+            WhisperProgressCallback { percent -> onProgress(percent.coerceIn(0, 100)) }
+        )
     }
 
     override fun close() {

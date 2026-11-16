@@ -89,6 +89,8 @@ class MainActivity : Activity() {
     private var transcriptionOutput = ""
     private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
     private var transcriptionStatusView: TextView? = null
+    private var transcriptionProgressView: ProgressBar? = null
+    private var transcriptionProgress = 0
     private var transcribeButton: MaterialButton? = null
     private var whisperDownloadButton: MaterialButton? = null
     private var statusMessage = "အသံရွေးပြီး စာသားထည့်ပါ။ ပထမဆုံးအသုံးပြုချိန်တွင် voice model ဒေါင်းလုဒ်လုပ်ပါမည်။"
@@ -184,6 +186,7 @@ class MainActivity : Activity() {
         transcribeButton = null
         whisperDownloadButton = null
         transcriptionStatusView = null
+        transcriptionProgressView = null
         when (tab) {
             TAB_HISTORY -> renderHistoryPage()
             TAB_TRANSCRIBE -> renderTranscriptionPage()
@@ -698,9 +701,25 @@ class MainActivity : Activity() {
             }, matchWidth())
         }
         val statusCard = cardView()
-        val status = label(transcriptionStatus, 13f, mutedColor).apply { setPadding(dp(14), dp(12), dp(14), dp(12)) }
+        val statusLayout = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        val status = label(transcriptionStatus, 13f, mutedColor)
         transcriptionStatusView = status
-        statusCard.addView(status)
+        statusLayout.addView(status, matchWidth())
+        val whisperProgress = ProgressBar(this@MainActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = transcriptionProgress
+            isIndeterminate = false
+            visibility = if (busy || transcriptionProgress >= 100) View.VISIBLE else View.GONE
+            progressTintList = ColorStateList.valueOf(primaryColor)
+        }
+        transcriptionProgressView = whisperProgress
+        statusLayout.addView(whisperProgress, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(6)
+        ).apply { topMargin = dp(8) })
+        statusCard.addView(statusLayout)
         page.addView(statusCard, matchWidth())
         applyBusyState()
     }
@@ -750,6 +769,7 @@ class MainActivity : Activity() {
             return
         }
         busy = true
+        transcriptionProgress = 0
         transcriptionStatus = "APK ထဲမှ Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ထည့်သွင်းရန် ပြင်ဆင်နေပါသည်…"
         applyBusyState()
         worker.execute {
@@ -759,11 +779,12 @@ class MainActivity : Activity() {
                     val downloadedMb = received / (1024.0 * 1024.0)
                     val totalText = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
                     mainHandler.post {
-                        updateTranscriptionStatus("Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ကူးယူနေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalText · $percent%")
+                        updateTranscriptionStatus("Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ကူးယူနေပါသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalText · $percent%", percent)
                     }
                 }
                 mainHandler.post {
                     busy = false
+                    transcriptionProgress = 100
                     transcriptionStatus = "Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ။ အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ။"
                     if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
                     toast("Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ။")
@@ -789,6 +810,7 @@ class MainActivity : Activity() {
         val language = selectedTranscriptionLanguage
         val script = selectedChineseScript
         busy = true
+        transcriptionProgress = 0
         transcriptionStatus = "Whisper မော်ဒယ်နှင့် အသံဖိုင်ကို ပြင်ဆင်နေပါသည်…"
         applyBusyState()
         worker.execute {
@@ -797,20 +819,27 @@ class MainActivity : Activity() {
                     val progress = if (total > 0L) (received * 100L / total).toInt().coerceIn(1, 99) else 1
                     val downloadedMb = received / (1024.0 * 1024.0)
                     val totalMb = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
-                    mainHandler.post { updateTranscriptionStatus("Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ကူးယူနေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%") }
+                    mainHandler.post { updateTranscriptionStatus("Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ကူးယူနေပါသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalMb · $progress%", progress) }
                 }
                 mainHandler.post { updateTranscriptionStatus("အသံဖိုင်ကို ဖတ်ရှုရန် ပြင်ဆင်နေပါသည်…") }
                 val audio = AndroidAudioDecoder.decodeMono16k(this, uri) { progress ->
-                    mainHandler.post { updateTranscriptionStatus("အသံဖိုင်ကို မှတ်သားရန် ပြင်ဆင်နေသည်… $progress%") }
+                mainHandler.post { updateTranscriptionStatus("အသံဖိုင်ကို မှတ်သားရန် ပြင်ဆင်နေသည်… $progress%", progress) }
                 }
-                mainHandler.post { updateTranscriptionStatus("Whisper က အင်တာနက်မလိုဘဲ စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်…") }
-                val raw = OfflineWhisperTranscriber(model).use { it.transcribe(audio, language) }
+                mainHandler.post { updateTranscriptionStatus("Whisper က စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်… 0%", 0) }
+                val raw = OfflineWhisperTranscriber(model).use { transcriber ->
+                    transcriber.transcribe(audio, language) { progress ->
+                        mainHandler.post {
+                            updateTranscriptionStatus("Whisper က စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်… $progress%", progress)
+                        }
+                    }
+                }
                 val converted = if (language == "zh" && script == "Hant") {
                     try { android.icu.text.Transliterator.getInstance("Simplified-Traditional").transliterate(raw) }
                     catch (_: Exception) { raw }
                 } else raw
                 mainHandler.post {
                     transcriptionOutput = converted
+                    transcriptionProgress = 100
                     transcriptionStatus = if (converted.isBlank()) "စကားပြောသံကို မသိရှိနိုင်ပါ။ အသံအရည်အသွေးကောင်းသော ဖိုင်ကို ပြန်ရွေးပါ။" else "အသံမှစာသား ပြောင်းလဲပြီးပါပြီ · အသံကြာချိန် ${audio.size / 16_000} စက္ကန့် · အင်တာနက်မလိုပါ"
                     busy = false
                     if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
@@ -825,9 +854,16 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateTranscriptionStatus(message: String) {
+    private fun updateTranscriptionStatus(message: String, progress: Int? = null) {
         transcriptionStatus = message
         transcriptionStatusView?.text = message
+        if (progress != null) {
+            transcriptionProgress = progress.coerceIn(0, 100)
+            transcriptionProgressView?.apply {
+                isIndeterminate = false
+                this.progress = transcriptionProgress
+            }
+        }
     }
 
     private fun addSpeedControl(page: LinearLayout) {
@@ -1497,6 +1533,8 @@ class MainActivity : Activity() {
         transcribeButton?.alpha = if (busy) 0.6f else 1f
         whisperDownloadButton?.isEnabled = !busy && !OfflineWhisperModelRepository(this).installed()
         whisperDownloadButton?.alpha = if (whisperDownloadButton?.isEnabled == true) 1f else 0.6f
+        transcriptionProgressView?.visibility = if (busy || transcriptionProgress >= 100) View.VISIBLE else View.GONE
+        transcriptionProgressView?.progress = transcriptionProgress
         listenButton?.isEnabled = !busy && lastOutput != null
         listenButton?.alpha = if (listenButton?.isEnabled == true) 1f else 0.55f
         progressBar?.visibility = if (busy) View.VISIBLE else View.GONE
