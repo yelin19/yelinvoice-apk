@@ -121,7 +121,7 @@ object TimestampDubRenderer {
                         samples = WsolaTimeStretch.fit(samples, targetFrames)
                         val shownSpeed = String.format(java.util.Locale.US, "%.2f×", speed)
                         val paceText = if (speed > 1.0) "အရှိန်မြှင့်" else "အရှိန်လျှော့"
-                        onProgress(percentBefore, "စာကြောင်း ${index + 1}: ${originalMs.toInt()} ms ကို $shownSpeed $paceTextပြီး အချိန်ကွက်အပြည့် ညှိနေသည်…")
+                        onProgress(percentBefore, "စာကြောင်း ${index + 1}: ${originalMs.toInt()} ms ကို $shownSpeed ${paceText} ပြီး အချိန်ကွက်အပြည့် ညှိနေသည်…")
                     }
                     check(samples.size == slotFrames) { "စာကြောင်း ${segment.lineNumber} ၏ အသံကြာချိန်ကို သတ်မှတ်ထားသော အချိန်ကွက်နှင့် ကိုက်ညီအောင် မညှိနိုင်ပါ။" }
                     val startFrame = (segment.startMs * SAMPLE_RATE / 1000.0).roundToInt().toLong()
