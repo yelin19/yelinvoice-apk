@@ -610,11 +610,11 @@ class MainActivity : Activity() {
             val modelStatus = when {
                 ready -> "Whisper large-v3-turbo · ထည့်သွင်းပြီး · အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ"
                 bundled -> "Whisper large-v3-turbo · APK ထဲတွင်ပါပြီး · 547 MiB ခန့် · ပထမဆုံးအသုံးပြုချိန်တွင် ဖုန်းထဲသို့ ကူးယူပါမည်"
-                else -> "Whisper large-v3-turbo · 547 MiB ခန့် · အင်တာနက်လိုအပ်ပါမည်"
+                else -> "Whisper large-v3-turbo · မော်ဒယ်မထည့်ရသေးပါ · 547 MiB ခန့် · ဒေါင်းလုဒ်လုပ်ရန် အင်တာနက်လိုပါမည်"
             }
             addView(label(modelStatus, 12f, if (ready) primaryColor else mutedColor), matchWidth())
             addView(space(6), matchWidth())
-            addView(label("တရုတ်အသံကိုသာ မှတ်သားပါမည်။ စာသားကို စကားလုံးတစ်လုံးချင်း၏ အသံထွက်ချိန်အပေါ် အခြေခံပြီး ဝါကျအလိုက် အချိန်မှတ်တမ်းနှင့် ထုတ်ပေးပါမည်။ ပထမဆုံးအသုံးပြုချိန်တွင် APK ထဲမှ App သိုလှောင်ခန်းသို့ ကူးယူပါမည်။ APK နှင့် မော်ဒယ်အတွက် စုစုပေါင်း 1.1 GiB ခန့် နေရာလိုနိုင်ပါသည်။ RAM နည်းသောဖုန်းတွင် လုပ်ဆောင်ချိန်ပိုကြာနိုင်ပါသည်။", 12f, mutedColor), matchWidth())
+            addView(label("တရုတ်အသံကိုသာ မှတ်သားပါမည်။ Whisper မော်ဒယ်ကို APK ထဲတွင် မထည့်ထားပါ။ ဤလုပ်ဆောင်ချက်ကို သုံးလိုပါက မော်ဒယ်ကို တစ်ကြိမ် ဒေါင်းလုဒ်လုပ်ပါ (547 MiB ခန့်၊ အင်တာနက်နှင့် ဖုန်းသိုလှောင်ခန်းလိုအပ်ပါသည်)။ ဒေါင်းလုဒ်ပြီးပါက အင်တာနက်မလိုဘဲ အသုံးပြုနိုင်ပါသည်။ RAM နည်းသောဖုန်းတွင် လုပ်ဆောင်ချိန်ပိုကြာနိုင်ပါသည်။", 12f, mutedColor), matchWidth())
             addView(space(10), matchWidth())
             val downloadButton = actionButton(
                 when {
