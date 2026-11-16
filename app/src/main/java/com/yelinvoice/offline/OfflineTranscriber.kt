@@ -130,10 +130,10 @@ internal object AndroidAudioDecoder {
     fun decodeMono16k(context: Context, uri: Uri, onProgress: (Int) -> Unit): FloatArray {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
-        val source = context.contentResolver.openFileDescriptor(uri, "r")
-            ?: throw IllegalArgumentException("ရွေးချယ်ထားသော အသံဖိုင်ကို ဖွင့်မရပါ။")
         try {
-            extractor.setDataSource(source.fileDescriptor)
+            // Open the SAF content URI through ContentResolver so providers
+            // with non-zero asset offsets and document-backed streams work.
+            extractor.setDataSource(context, uri, null)
             var track = -1
             var format: MediaFormat? = null
             for (i in 0 until extractor.trackCount) {
@@ -227,7 +227,6 @@ internal object AndroidAudioDecoder {
             try { codec?.stop() } catch (_: Exception) { }
             codec?.release()
             extractor.release()
-            source.close()
         }
     }
 

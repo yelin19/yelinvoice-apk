@@ -765,7 +765,7 @@ class MainActivity : Activity() {
         }
         busy = true
         transcriptionProgress = 0
-        transcriptionStatus = "APK ထဲမှ Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ထည့်သွင်းရန် ပြင်ဆင်နေပါသည်…"
+        transcriptionStatus = "Whisper မော်ဒယ်ကို ဖုန်းထဲသို့ ထည့်သွင်းရန် ပြင်ဆင်နေပါသည်…"
         applyBusyState()
         worker.execute {
             try {
@@ -1003,7 +1003,7 @@ class MainActivity : Activity() {
                 mainHandler.post {
                     busy = false
                     progressPercent = 0
-                    showStatus("ဖုန်း၏ memory မလုံလောက်သဖြင့် အသံဖန်တီးမရပါ။ အခြား app များကို ပိတ်ပြီး ထပ်စမ်းပါ၊ မရပါက စာသားကို အပို хэсгүүдэд хувааж үүсгэнэ үү။")
+                    showStatus("ဖုန်း၏ memory မလုံလောက်သဖြင့် အသံဖန်တီးမရပါ။ အခြား app များကို ပိတ်ပြီး ထပ်စမ်းပါ၊ မရပါက စာသားကို ပိုတိုသောအပိုင်းများခွဲ၍ ထပ်ကြိုးစားပါ။")
                     toast(statusMessage)
                     applyBusyState()
                 }
