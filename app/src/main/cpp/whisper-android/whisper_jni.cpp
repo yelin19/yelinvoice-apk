@@ -28,8 +28,8 @@ void onWhisperProgress(whisper_context *, whisper_state *, int progress, void *u
     if (attached) state->vm->DetachCurrentThread();
 }
 
-std::string timestamp(int64_t centiseconds) {
-    const int64_t seconds = std::max<int64_t>(0, centiseconds) / 100;
+std::string timestamp(int64_t seconds) {
+    seconds = std::max<int64_t>(0, seconds);
     const int64_t minutes = seconds / 60;
     const int64_t remainder = seconds % 60;
     std::ostringstream out;
@@ -83,7 +83,7 @@ Java_com_yelinvoice_offline_WhisperNative_transcribe(JNIEnv *env, jobject, jlong
     params.offset_ms = 0;
     params.no_context = false;
     params.single_segment = false;
-    params.token_timestamps = false;
+    params.token_timestamps = true;
 
     JniProgressState progress_state;
     if (progress_callback != nullptr && env->GetJavaVM(&progress_state.vm) == JNI_OK) {
@@ -107,20 +107,57 @@ Java_com_yelinvoice_offline_WhisperNative_transcribe(JNIEnv *env, jobject, jlong
     if (status != 0) return env->NewStringUTF("");
 
     std::ostringstream result;
+    std::string phrase;
+    int64_t phrase_start = -1;
+    int64_t phrase_end = 0;
+    auto flush_phrase = [&]() {
+        const auto first = phrase.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            phrase.clear();
+            phrase_start = -1;
+            return;
+        }
+        phrase = phrase.substr(first);
+        const auto last = phrase.find_last_not_of(" \t\r\n");
+        phrase.resize(last + 1);
+        const int64_t start_seconds = std::max<int64_t>(0, phrase_start) / 100;
+        const int64_t bounded_end = std::max<int64_t>(phrase_end, phrase_start + 1);
+        int64_t end_seconds = (bounded_end + 99) / 100;
+        if (end_seconds <= start_seconds) end_seconds = start_seconds + 1;
+        result << "[" << timestamp(start_seconds) << " - " << timestamp(end_seconds)
+               << "] " << phrase << "\n";
+        phrase.clear();
+        phrase_start = -1;
+    };
     const int count = whisper_full_n_segments(ctx);
     for (int i = 0; i < count; ++i) {
-        const char *text = whisper_full_get_segment_text(ctx, i);
-        if (text == nullptr) continue;
-        std::string line(text);
-        const auto first = line.find_first_not_of(" \t\r\n");
-        if (first == std::string::npos) continue;
-        line = line.substr(first);
-        const auto last = line.find_last_not_of(" \t\r\n");
-        line.resize(last + 1);
-        result << "[" << timestamp(whisper_full_get_segment_t0(ctx, i))
-               << " - " << timestamp(whisper_full_get_segment_t1(ctx, i))
-               << "] " << line << "\n";
+        const int token_count = whisper_full_n_tokens(ctx, i);
+        for (int j = 0; j < token_count; ++j) {
+            const char *token_text = whisper_full_get_token_text(ctx, i, j);
+            if (token_text == nullptr) continue;
+            std::string token(token_text);
+            if (token.empty() || token.rfind("<|", 0) == 0) continue;
+            const auto first = token.find_first_not_of(" \t\r\n");
+            if (first == std::string::npos) continue;
+            token = token.substr(first);
+
+            const int64_t token_start = std::max<int64_t>(0, whisper_full_get_token_t0(ctx, i, j));
+            const int64_t token_end = std::max<int64_t>(token_start + 1, whisper_full_get_token_t1(ctx, i, j));
+            if (phrase_start < 0) phrase_start = token_start;
+            phrase += token;
+            phrase_end = token_end;
+
+            const bool sentence_end = token.find("。") != std::string::npos ||
+                                      token.find("！") != std::string::npos ||
+                                      token.find("？") != std::string::npos ||
+                                      token.find("!") != std::string::npos ||
+                                      token.find("?") != std::string::npos ||
+                                      token.find(";") != std::string::npos ||
+                                      token.find("；") != std::string::npos;
+            if (sentence_end) flush_phrase();
+        }
     }
+    flush_phrase();
     const std::string output = result.str();
     return env->NewStringUTF(output.c_str());
 }

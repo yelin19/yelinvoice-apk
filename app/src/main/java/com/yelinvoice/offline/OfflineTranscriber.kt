@@ -131,7 +131,7 @@ internal object AndroidAudioDecoder {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         val source = context.contentResolver.openFileDescriptor(uri, "r")
-            ?: throw IllegalArgumentException("Сонгосон аудио файлыг нээж чадсангүй.")
+            ?: throw IllegalArgumentException("ရွေးချယ်ထားသော အသံဖိုင်ကို ဖွင့်မရပါ။")
         try {
             extractor.setDataSource(source.fileDescriptor)
             var track = -1
@@ -141,8 +141,8 @@ internal object AndroidAudioDecoder {
                 val mime = candidate.getString(MediaFormat.KEY_MIME).orEmpty()
                 if (mime.startsWith("audio/")) { track = i; format = candidate; break }
             }
-            require(track >= 0) { "Файлаас дэмжигдэх audio track олдсонгүй." }
-            val audioFormat = format ?: throw IllegalArgumentException("Файлаас дэмжигдэх audio track олдсонгүй.")
+            require(track >= 0) { "အသံဖိုင်တွင် ပံ့ပိုးထားသော အသံလမ်းကြောင်း မတွေ့ပါ။" }
+            val audioFormat = format ?: throw IllegalArgumentException("အသံဖိုင်တွင် ပံ့ပိုးထားသော အသံလမ်းကြောင်း မတွေ့ပါ။")
             extractor.selectTrack(track)
             val mime = audioFormat.getString(MediaFormat.KEY_MIME)!!
             codec = MediaCodec.createDecoderByType(mime)
@@ -278,7 +278,7 @@ internal class OfflineWhisperTranscriber(modelFile: File) : AutoCloseable {
 
     fun transcribe(audio16k: FloatArray, languageCode: String, onProgress: (Int) -> Unit): String {
         check(context != 0L) { "Whisper စနစ် အလုပ်မလုပ်ပါ။" }
-        require(languageCode == "my" || languageCode == "zh") { "Дэмжигдэх хэлээ сонгоно уу." }
+        require(languageCode == "zh") { "တရုတ်ဘာသာကို ရွေးချယ်ပါ။" }
         require(audio16k.isNotEmpty()) { "အသံဖိုင်တွင် ဖတ်ရှုနိုင်သော အချက်အလက်မရှိပါ။" }
         return WhisperNative.transcribe(
             context,

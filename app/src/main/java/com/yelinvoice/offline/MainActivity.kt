@@ -83,7 +83,7 @@ class MainActivity : Activity() {
     private var playbackTimeLabel: TextView? = null
     private var playbackProgressRunnable: Runnable? = null
     private var previewFile: File? = null
-    private var selectedTranscriptionLanguage = "my"
+    private var selectedTranscriptionLanguage = "zh"
     private var selectedChineseScript = "Hans"
     private var transcriptionUri: Uri? = null
     private var transcriptionOutput = ""
@@ -556,32 +556,25 @@ class MainActivity : Activity() {
 
     private fun renderTranscriptionPage() {
         val page = newPage()
-        addHeader(page, "အသံမှ စာသားသို့", "Whisper ကို ဖုန်းထဲတွင် အင်တာနက်မလိုဘဲ အသုံးပြုပြီး မြန်မာနှင့် တရုတ်စကားပြောကို အချိန်မှတ်တမ်းပါ စာသားအဖြစ် ပြောင်းပေးပါမည်။")
+        addHeader(page, "တရုတ်အသံမှ စာသားသို့", "တရုတ်စကားပြောအသံကို အင်တာနက်မလိုဘဲ တရုတ်စာသားနှင့် စက္ကန့်အချိန်မှတ်တမ်းပါအောင် ထုတ်ပေးပါမည်။")
         card(page) {
-            addView(label("ဘာသာစကားရွေးရန်", 16f, inkColor, true), matchWidth())
+            addView(label("တရုတ်စာလုံးပုံစံရွေးရန်", 16f, inkColor, true), matchWidth())
             addView(space(8), matchWidth())
             val languageLayout = TextInputLayout(this@MainActivity).apply {
-                hint = "အသံဘာသာစကား"
+                hint = "တရုတ်စာလုံးပုံစံ"
                 boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
                 endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
             }
-            val languageLabels = listOf("မြန်မာဘာသာ", "တရုတ်စာ (ရိုးရှင်း) · 简体中文", "တရုတ်စာ (ရိုးရာ) · 繁體中文")
+            val languageLabels = listOf("简体中文 · တရုတ်စာ (ရိုးရှင်း)", "繁體中文 · တရုတ်စာ (ရိုးရာ)")
             val languagePicker = MaterialAutoCompleteTextView(this@MainActivity).apply {
                 inputType = android.text.InputType.TYPE_NULL
                 keyListener = null
                 setSimpleItems(languageLabels.toTypedArray())
-                val index = when {
-                    selectedTranscriptionLanguage == "my" -> 0
-                    selectedChineseScript == "Hant" -> 2
-                    else -> 1
-                }
+                val index = if (selectedChineseScript == "Hant") 1 else 0
                 setText(languageLabels[index], false)
                 setOnItemClickListener { _, _, position, _ ->
-                    when (position) {
-                        0 -> selectedTranscriptionLanguage = "my"
-                        1 -> { selectedTranscriptionLanguage = "zh"; selectedChineseScript = "Hans" }
-                        2 -> { selectedTranscriptionLanguage = "zh"; selectedChineseScript = "Hant" }
-                    }
+                    selectedTranscriptionLanguage = "zh"
+                    selectedChineseScript = if (position == 1) "Hant" else "Hans"
                 }
             }
             languageLayout.addView(languagePicker, LinearLayout.LayoutParams(
@@ -620,7 +613,7 @@ class MainActivity : Activity() {
             }
             addView(label(modelStatus, 12f, if (ready) primaryColor else mutedColor), matchWidth())
             addView(space(6), matchWidth())
-            addView(label("တရုတ်စာကို ပိုမိုတိကျစွာ မှတ်သားနိုင်ရန် အသုံးပြုသည့် ဘာသာစကားစုံ မော်ဒယ်ကြီးဖြစ်ပါသည်။ ပထမဆုံးအသုံးပြုချိန်တွင် APK ထဲမှ App သိုလှောင်ခန်းသို့ ကူးယူပါမည်။ APK နှင့် မော်ဒယ်အတွက် စုစုပေါင်း 1.1 GiB ခန့် နေရာလိုနိုင်ပါသည်။ RAM နည်းသောဖုန်းတွင် လုပ်ဆောင်ချိန်ကြာနိုင်သလို စနစ်က App ကို ပိတ်နိုင်ပါသည်။", 12f, mutedColor), matchWidth())
+            addView(label("တရုတ်အသံကိုသာ မှတ်သားပါမည်။ စာသားကို စကားလုံးတစ်လုံးချင်း၏ အသံထွက်ချိန်အပေါ် အခြေခံပြီး ဝါကျအလိုက် အချိန်မှတ်တမ်းနှင့် ထုတ်ပေးပါမည်။ ပထမဆုံးအသုံးပြုချိန်တွင် APK ထဲမှ App သိုလှောင်ခန်းသို့ ကူးယူပါမည်။ APK နှင့် မော်ဒယ်အတွက် စုစုပေါင်း 1.1 GiB ခန့် နေရာလိုနိုင်ပါသည်။ RAM နည်းသောဖုန်းတွင် လုပ်ဆောင်ချိန်ပိုကြာနိုင်ပါသည်။", 12f, mutedColor), matchWidth())
             addView(space(10), matchWidth())
             val downloadButton = actionButton(
                 when {
