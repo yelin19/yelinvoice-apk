@@ -980,10 +980,11 @@ class MainActivity : Activity() {
                             engine = engine,
                             outputFile = temporary!!,
                             speedFactorProvider = { timestampSpeedFactor }
-                        ) { percent, message -> mainHandler.post { setSpeechProgress(percent, message) } }
+                        ) { percent, message -> mainHandler.post { setSpeechProgress(percent.coerceIn(1, 99), message) } }
                     } else {
                         engine.synthesize(text, temporary!!) { percent ->
-                            mainHandler.post { setSpeechProgress(percent, "အသံဖန်တီးနေသည်… $percent%") }
+                            val visibleProgress = percent.coerceIn(1, 99)
+                            mainHandler.post { setSpeechProgress(visibleProgress, "အသံဖန်တီးနေသည်… $visibleProgress%") }
                         }
                     }
                 }
@@ -996,11 +997,15 @@ class MainActivity : Activity() {
                     lastOutput = record
                     busy = false
                     setSpeechProgress(100, if (timestampModeForJob) "Timestamp အလိုက် အသံတစ်ဖိုင်တည်း ဖန်တီးပြီးပါပြီ။ 100%" else "အသံဖိုင် ဖန်တီးပြီးပါပြီ။ 100%")
-                    if (navigation.selectedItemId == TAB_HISTORY) {
-                        renderPage(TAB_HISTORY)
-                    } else {
-                        navigation.selectedItemId = TAB_HISTORY
-                    }
+                    applyBusyState()
+                }
+            } catch (_: OutOfMemoryError) {
+                temporary?.delete()
+                mainHandler.post {
+                    busy = false
+                    progressPercent = 0
+                    showStatus("ဖုန်း၏ memory မလုံလောက်သဖြင့် အသံဖန်တီးမရပါ။ အခြား app များကို ပိတ်ပြီး ထပ်စမ်းပါ၊ မရပါက စာသားကို အပို хэсгүүдэд хувааж үүсгэнэ үү။")
+                    toast(statusMessage)
                     applyBusyState()
                 }
             } catch (error: Exception) {
