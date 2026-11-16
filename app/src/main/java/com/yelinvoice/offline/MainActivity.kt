@@ -87,6 +87,7 @@ class MainActivity : Activity() {
     private var selectedChineseScript = "Hans"
     private var transcriptionUri: Uri? = null
     private var transcriptionOutput = ""
+    private var transcriptionOutputView: TextInputEditText? = null
     private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
     private var transcriptionStatusView: TextView? = null
     private var transcriptionProgressView: ProgressBar? = null
@@ -662,6 +663,7 @@ class MainActivity : Activity() {
                 }
                 override fun afterTextChanged(s: android.text.Editable?) = Unit
             })
+            transcriptionOutputView = output
             outputLayout.addView(output, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190)))
             addView(outputLayout, matchWidth())
             addView(outputCount, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(26)))
@@ -821,8 +823,9 @@ class MainActivity : Activity() {
                 mainHandler.post { updateTranscriptionStatus("Whisper က စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်… 0%", 0) }
                 val raw = OfflineWhisperTranscriber(model).use { transcriber ->
                     transcriber.transcribe(audio, language) { progress ->
+                        val visibleProgress = progress.coerceIn(0, 99)
                         mainHandler.post {
-                            updateTranscriptionStatus("Whisper က စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်… $progress%", progress)
+                            updateTranscriptionStatus("Whisper က စကားပြောကို စာသားအဖြစ် ပြောင်းနေပါသည်… $visibleProgress%", visibleProgress)
                         }
                     }
                 }
@@ -835,7 +838,17 @@ class MainActivity : Activity() {
                     transcriptionProgress = 100
                     transcriptionStatus = if (converted.isBlank()) "စကားပြောသံကို မသိရှိနိုင်ပါ။ အသံအရည်အသွေးကောင်းသော ဖိုင်ကို ပြန်ရွေးပါ။" else "အသံမှစာသား ပြောင်းလဲပြီးပါပြီ · အသံကြာချိန် ${audio.size / 16_000} စက္ကန့် · အင်တာနက်မလိုပါ"
                     busy = false
-                    if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
+                    if (currentTab == TAB_TRANSCRIBE) transcriptionOutputView?.setText(converted)
+                    updateTranscriptionStatus(transcriptionStatus, 100)
+                    applyBusyState()
+                }
+            } catch (_: OutOfMemoryError) {
+                mainHandler.post {
+                    busy = false
+                    transcriptionProgress = 0
+                    transcriptionStatus = "ဖုန်း၏ memory မလုံလောက်သဖြင့် စာသားထုတ်၍မရပါ။ အခြား app များကို ပိတ်ပြီး ထပ်စမ်းပါ၊ မရပါက အသံပိုတိုသောဖိုင်ကို အသုံးပြုပါ။"
+                    updateTranscriptionStatus(transcriptionStatus, 0)
+                    applyBusyState()
                 }
             } catch (error: Exception) {
                 mainHandler.post {

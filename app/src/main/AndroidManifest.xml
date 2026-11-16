@@ -3,6 +3,7 @@
 
     <application
         android:allowBackup="false"
+        android:largeHeap="true"
         android:icon="@drawable/yelinvoice_icon_small"
         android:label="Yelinvoice Offline"
         android:roundIcon="@drawable/yelinvoice_icon_small"

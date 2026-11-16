@@ -284,7 +284,7 @@ internal class OfflineWhisperTranscriber(modelFile: File) : AutoCloseable {
             context,
             audio16k,
             languageCode,
-            Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+            Runtime.getRuntime().availableProcessors().coerceIn(1, 2),
             WhisperProgressCallback { percent -> onProgress(percent.coerceIn(0, 100)) }
         )
     }
