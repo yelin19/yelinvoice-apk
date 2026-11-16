@@ -16,6 +16,8 @@ import kotlin.math.abs
 
 /** Runs Nara Mini's released encoder/decoder locally on Android. */
 class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : AutoCloseable {
+    private data class SpeechPiece(val text: String, val pauseAfterMs: Int)
+
     private val env = OrtEnvironment.getEnvironment()
     private val options = OrtSession.SessionOptions().apply {
         setIntraOpNumThreads(2)
@@ -39,7 +41,7 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
         BufferedOutputStream(FileOutputStream(outputFile), 128 * 1024).use { output ->
             output.write(wavHeaderBytes(0L))
             for ((pieceIndex, piece) in pieces.withIndex()) {
-            val phonemes = bridge.callAttr("phonemize_text", piece).toString()
+            val phonemes = bridge.callAttr("phonemize_text", piece.text).toString()
             val ids = ArrayList<Long>()
             phonemes.codePoints().forEach { cp ->
                 val symbol = String(Character.toChars(cp))
@@ -102,8 +104,9 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
             pInput.close(); tInput.close(); sInput.close()
             require(samples.size >= 2_400 && samples.all { it.isFinite() }) { "Model က အသံဖိုင်ကို မှန်ကန်စွာ မဖန်တီးနိုင်ပါ။" }
                 if (pieceIndex > 0) {
-                    repeat(4_800) { output.write(0); output.write(0) }
-                    dataBytes += 9_600L
+                    val pauseFrames = pieces[pieceIndex - 1].pauseAfterMs * 24
+                    repeat(pauseFrames) { output.write(0); output.write(0) }
+                    dataBytes += pauseFrames * 2L
                 }
                 dataBytes += writePcmSamples(output, samples)
                 require(dataBytes <= 0xFFFFFFFFL - 36L) { "ဖန်တီးမည့်အသံဖိုင်သည် WAV ဖိုင်အရွယ်အစား အများဆုံးကန့်သတ်ချက်ထက် ကြီးနေပါသည်။ စာသားကို အပိုင်းအလိုက် ဖန်တီးပါ။" }
@@ -174,33 +177,34 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
         return normalized
     }
 
-    private fun splitText(input: String, limit: Int = 200): List<String> {
-        val units = ArrayList<String>()
-        val sentencePattern = Regex("(?<=[။!?…\\n])\\s*")
-        val clausePattern = Regex("(?<=၊)\\s*")
-        input.split(sentencePattern).forEach { sentence ->
-            sentence.split(clausePattern).forEach { raw ->
-                var clause = raw.trim()
-                while (clause.length > limit) {
-                    var cut = clause.lastIndexOf(' ', limit)
-                    if (cut <= 0) cut = limit
-                    units.add(clause.substring(0, cut).trim())
-                    clause = clause.substring(cut).trim()
+    private fun splitText(input: String, limit: Int = 200): List<SpeechPiece> {
+        val sentences = input.split(Regex("(?<=။)\\s*")).map { it.trim() }.filter { it.isNotEmpty() }
+        val chunksBySentence = sentences.map { sentence ->
+            val chunks = ArrayList<String>()
+            var remaining = sentence
+            while (remaining.length > limit) {
+                var cut = remaining.lastIndexOf(' ', limit)
+                if (cut <= 0) cut = limit
+                chunks.add(remaining.substring(0, cut).trim())
+                remaining = remaining.substring(cut).trim()
+            }
+            if (remaining.isNotEmpty()) chunks.add(remaining)
+            chunks
+        }
+        val pieces = ArrayList<SpeechPiece>()
+        for ((sentenceIndex, chunks) in chunksBySentence.withIndex()) {
+            for ((chunkIndex, chunk) in chunks.withIndex()) {
+                val nextChunkInSentence = chunkIndex < chunks.lastIndex
+                val hasNextSentence = sentenceIndex < chunksBySentence.lastIndex
+                val pauseAfterMs = when {
+                    nextChunkInSentence -> 200
+                    hasNextSentence && sentences[sentenceIndex].endsWith('။') -> 500
+                    hasNextSentence -> 200
+                    else -> 0
                 }
-                if (clause.isNotEmpty()) units.add(clause)
+                pieces.add(SpeechPiece(chunk, pauseAfterMs))
             }
         }
-        val pieces = ArrayList<String>()
-        var current = ""
-        for (unit in units) {
-            if (current.isNotEmpty() && current.length + 1 + unit.length > limit) {
-                pieces.add(current)
-                current = unit
-            } else {
-                current = listOf(current, unit).filter { it.isNotEmpty() }.joinToString(" ")
-            }
-        }
-        if (current.isNotEmpty()) pieces.add(current)
         require(pieces.isNotEmpty()) { "ဖတ်ရန် မြန်မာစာသား ထည့်ပါ။" }
         return pieces
     }
