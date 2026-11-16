@@ -22,11 +22,15 @@ data class TimedSpeechSegment(
 /** Parses [MM:SS - MM:SS] or [HH:MM:SS - HH:MM:SS] transcript lines. */
 object TimestampTranscriptParser {
     private const val SAMPLE_RATE = 24_000L
-    private val linePattern = Regex("^\\s*\\[(.+?)\\s*-\\s*(.+?)\\]\\s*(.*?)\\s*$")
+    private val linePattern = Regex("^\\s*\\[?\\s*((?:\\d+:)?\\d+:\\d+(?:\\.\\d+)?)\\s*-\\s*((?:\\d+:)?\\d+(?:\\.\\d+)?)\\s*\\]?\\s*(.*?)\\s*$")
 
     fun parse(input: String): List<TimedSpeechSegment> {
         val segments = ArrayList<TimedSpeechSegment>()
-        input.lines().forEachIndexed { index, raw ->
+        val trimmedInput = input.trim()
+        val transcriptBody = if (trimmedInput.startsWith("(") && trimmedInput.endsWith(")") && trimmedInput.contains("[")) {
+            trimmedInput.substring(1, trimmedInput.length - 1).trim()
+        } else trimmedInput
+        transcriptBody.lines().forEachIndexed { index, raw ->
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("#")) return@forEachIndexed
             val match = linePattern.matchEntire(line)

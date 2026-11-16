@@ -90,6 +90,7 @@ class MainActivity : Activity() {
     private var transcriptionStatus = "အသံဖိုင်ရွေးပြီး ဘာသာစကားရွေးကာ စာသားထုတ်ယူပါ။"
     private var transcriptionStatusView: TextView? = null
     private var transcribeButton: MaterialButton? = null
+    private var whisperDownloadButton: MaterialButton? = null
     private var statusMessage = "အသံရွေးပြီး စာသားထည့်ပါ။ ပထမဆုံးအသုံးပြုချိန်တွင် voice model ဒေါင်းလုဒ်လုပ်ပါမည်။"
 
     private val prefs by lazy { getSharedPreferences("yelinvoice-settings", MODE_PRIVATE) }
@@ -181,6 +182,7 @@ class MainActivity : Activity() {
         timestampSpeedSlider = null
         previewButton = null
         transcribeButton = null
+        whisperDownloadButton = null
         transcriptionStatusView = null
         when (tab) {
             TAB_HISTORY -> renderHistoryPage()
@@ -359,7 +361,7 @@ class MainActivity : Activity() {
             addView(resizeHandle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
             if (timestampMode) {
                 addView(space(8), matchWidth())
-                addView(label("စာကြောင်းတစ်ကြောင်းစီကို [00:00 - 00:03] စာသား ပုံစံဖြင့်ရေးပါ။ အသံကို သတ်မှတ်ထားသော စတင်ချိန်တွင် သဘာဝအမြန်နှုန်းအတိုင်း ထည့်ပြီး WAV တစ်ဖိုင်တည်း ထုတ်ပေးပါမည်။ အသံရှည်ပါက မမြန်စေဘဲ နောက်ဆုံးဖိုင်ကြာချိန်ကို တိုးပေးမည်။", 12f, mutedColor), matchWidth())
+                addView(label("[00:20 - 00:23] စာသား သို့မဟုတ် 00:20-00:23 စာသား ပုံစံဖြင့်ရေးပါ။ အလွတ်လိုင်းများနှင့် စာသားတစ်ခုလုံးကို ဝိုင်းထားသော ( ) ကို လျစ်လျူရှုပါမည်။ ပထမအသံမစမီကာလနှင့် အချိန်ကွာဟချက်များကို အသံတိတ်ထားပြီး၊ စာကြောင်းရှည်လျှင် အချိန်ကွက်အတွင်း ဝင်စေရန် အမြန်နှုန်းကို အလိုအလျောက်ညှိကာ WAV တစ်ဖိုင်တည်း ထုတ်ပေးပါမည်။", 12f, mutedColor), matchWidth())
             }
         }
 
@@ -609,6 +611,14 @@ class MainActivity : Activity() {
             addView(label(if (ready) "ဘာသာစကားစုံသုံး မော်ဒယ်အသေး · ထည့်သွင်းပြီး · အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ" else "ဘာသာစကားစုံသုံး မော်ဒယ်အသေး · 74 MiB ခန့် · ပထမဆုံးအကြိမ် ဒေါင်းလုဒ်လုပ်ပါမည်", 12f, if (ready) primaryColor else mutedColor), matchWidth())
             addView(space(6), matchWidth())
             addView(label("မော်ဒယ်ဒေါင်းလုဒ်ပြီးပါက အသံမှတ်သားခြင်းကို ဖုန်းထဲတွင်ပင် အင်တာနက်မလိုဘဲ လုပ်ဆောင်ပါမည်။ မော်ဒယ်အသေးဖြစ်သောကြောင့် မြန်မာစကားသိရှိမှု တိကျမှုသည် အသံအရည်အသွေးအပေါ် မူတည်နိုင်ပါသည်။", 12f, mutedColor), matchWidth())
+            addView(space(10), matchWidth())
+            val downloadButton = actionButton(if (ready) "Whisper မော်ဒယ် ထည့်သွင်းပြီးပါပြီ" else "Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်ရန်", filled = !ready).apply {
+                isEnabled = !ready && !busy
+                alpha = if (isEnabled) 1f else 0.6f
+                setOnClickListener { downloadWhisperModel() }
+            }
+            whisperDownloadButton = downloadButton
+            addView(downloadButton, matchWidth())
         }
 
         card(page) {
@@ -659,6 +669,10 @@ class MainActivity : Activity() {
                 }
             }, matchWidth())
             addView(space(8), matchWidth())
+            addView(actionButton("Gemini အတွက် မြန်မာဘာသာပြန် Prompt ကူးယူရန်", false).apply {
+                setOnClickListener { copyGeminiTranslationPrompt() }
+            }, matchWidth())
+            addView(space(8), matchWidth())
             addView(actionButton("အချိန်အလိုက် အသံထုတ်ရန် စာမျက်နှာသို့ ပို့ရန်", false).apply {
                 setOnClickListener {
                     if (transcriptionOutput.isBlank()) toast("ပို့ရန် စာသားရလဒ် မရှိသေးပါ။")
@@ -677,12 +691,78 @@ class MainActivity : Activity() {
         applyBusyState()
     }
 
+    private fun copyGeminiTranslationPrompt() {
+        val source = transcriptionOutput.trim()
+        if (source.isBlank()) {
+            toast("ဘာသာပြန်ရန် timestamp ပါသော တရုတ်စာသားကို အရင်ထုတ်ယူပါ။")
+            return
+        }
+        if (selectedTranscriptionLanguage != "zh") {
+            toast("အသံမှ တရုတ်ဘာသာကို ရွေးပြီး စာသားထုတ်ယူပါ။")
+            return
+        }
+        val prompt = buildString {
+            appendLine("သင်သည် တရုတ်စကားမှ မြန်မာ dubbing ဘာသာပြန်သူ ဖြစ်သည်။ အောက်ပါ timestamp ပါသော တရုတ်စာသားကို သဘာဝကျသော မြန်မာစကားပြောပုံစံဖြင့် ပြန်ဆိုပါ။")
+            appendLine()
+            appendLine("လိုက်နာရန် စည်းကမ်းများ:")
+            appendLine("၁။ စာကြောင်းတစ်ကြောင်းချင်းစီကို သီးခြားပြန်ပါ။ မူရင်း timestamp တစ်ခုချင်းစီကို အတိအကျ မပြောင်းဘဲ ထားပါ။")
+            appendLine("၂။ စတင်ချိန်နှင့် အဆုံးချိန်ကြား စက္ကန့်ကြာချိန်ကိုတွက်ပြီး၊ သတ်မှတ်ချိန်အတွင်း သဘာဝနှုန်းဖြင့် ဖတ်လို့ရမည့် အတိုချုံး မြန်မာဘာသာပြန်ကို ရွေးပါ။ အသံဖတ်နှုန်းကို အလွန်မြန်အောင် မလုပ်ပါနှင့်။")
+            appendLine("၃။ မြန်မာစကားလုံး/အသံထွက်အရေအတွက်ကို ကြာချိန်နှင့် နှိုင်းယှဉ်တွက်ပါ။ ပုံမှန်အားဖြင့် တစ်စက္ကန့်လျှင် ၃ မှ ၄ သံခန့်သာ ရည်မှန်းပြီး၊ အသံရှူနားချိန်အတွက် အနည်းငယ်ချန်ထားပါ။ အချိန်ကွက်တိုလျှင် အဓိကအဓိပ္ပာယ်ကို ထိန်းသိမ်းကာ တိုတိုပြန်ပါ။")
+            appendLine("၄။ မူရင်းစာသား၏ အဓိပ္ပာယ်၊ ဇာတ်ကောင်အမည်နှင့် ပြောဆိုသူကို မပြောင်းပါနှင့်။ ထပ်နေသော ရွေးချယ်စကားများကိုသာ လိုအပ်သလို အတိုချုံးပါ။ မူရင်းထဲမရှိသော အချက်အလက် မထည့်ပါနှင့်။")
+            appendLine("၅။ အချိန်ကွာဟမှုကို မဖြည့်ပါနှင့်။ စာကြောင်းများကို မပေါင်းပါနှင့်၊ မခွဲပါနှင့်၊ timestamp အသစ် မထည့်ပါနှင့်။ မူရင်း timestamp ရှိသော လိုင်းတစ်ခုစီအတွက် ဘာသာပြန်တစ်ကြောင်းစီသာ ထုတ်ပါ။")
+            appendLine("၆။ ရလဒ်ကို အောက်ပါပုံစံအတိုင်းသာ ထုတ်ပါ။ အခြားရှင်းလင်းချက်၊ ခေါင်းစဉ် သို့မဟုတ် မှတ်ချက် မထည့်ပါနှင့်။ ဥပမာ - [00:00 - 00:02] မြန်မာဘာသာပြန်စာသား")
+            appendLine()
+            appendLine("တရုတ်မူရင်း timestamp စာသား:")
+            appendLine(source)
+        }
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Gemini Myanmar dubbing prompt", prompt))
+        toast("Gemini prompt နှင့် တရုတ်စာသားကို ကူးယူပြီးပါပြီ။")
+    }
+
     private fun openAudioPicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "audio/*"
         }
         startActivityForResult(intent, REQUEST_TRANSCRIBE_AUDIO)
+    }
+
+    private fun downloadWhisperModel() {
+        if (busy) return
+        val repository = OfflineWhisperModelRepository(this)
+        if (repository.installed()) {
+            toast("Whisper မော်ဒယ်ကို ထည့်သွင်းပြီးပါပြီ။ အင်တာနက်မလိုဘဲ သုံးနိုင်ပါသည်။")
+            return
+        }
+        busy = true
+        transcriptionStatus = "Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်ရန် ပြင်ဆင်နေပါသည်…"
+        applyBusyState()
+        worker.execute {
+            try {
+                repository.ensureDownloaded { received, total ->
+                    val percent = if (total > 0L) (received * 100L / total).toInt().coerceIn(1, 99) else 1
+                    val downloadedMb = received / (1024.0 * 1024.0)
+                    val totalText = if (total > 0L) " / ${"%.1f".format(Locale.US, total / (1024.0 * 1024.0))} MB" else " MB"
+                    mainHandler.post {
+                        updateTranscriptionStatus("Whisper မော်ဒယ် ဒေါင်းလုဒ်လုပ်နေသည်: ${"%.1f".format(Locale.US, downloadedMb)}$totalText · $percent%")
+                    }
+                }
+                mainHandler.post {
+                    busy = false
+                    transcriptionStatus = "Whisper မော်ဒယ် ဒေါင်းလုဒ်ပြီးပါပြီ။ အင်တာနက်မလိုဘဲ သုံးနိုင်ပါပြီ။"
+                    if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
+                    toast("Whisper မော်ဒယ် ဒေါင်းလုဒ်ပြီးပါပြီ။")
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    busy = false
+                    transcriptionStatus = "Whisper မော်ဒယ် ဒေါင်းလုဒ်မအောင်မြင်ပါ။ ${error.message ?: "ကွန်ရက်ကို စစ်ဆေးပါ။"}"
+                    if (currentTab == TAB_TRANSCRIBE) renderTranscriptionPage() else applyBusyState()
+                    toast(transcriptionStatus)
+                }
+            }
+        }
     }
 
     private fun transcribeSelectedAudio() {
@@ -1254,11 +1334,12 @@ class MainActivity : Activity() {
     }
 
     private fun confirmDelete(record: AudioRecord) {
+        val preview = record.text.replace('\n', ' ').trim().take(120)
         AlertDialog.Builder(this)
-            .setTitle("အသံဖိုင် ဖျက်ရန်")
-            .setMessage("ဒီအသံဖိုင်ကို app သိုလှောင်ခန်းမှ အပြီးဖျက်မလား။")
+            .setTitle("ဒီအသံဖိုင်တစ်ခုတည်းကို ဖျက်ရန်")
+            .setMessage("ရွေးထားသော အသံဖိုင်တစ်ခုတည်းကိုသာ ဖျက်ပါမည်။ အခြားအသံဖိုင်များကို မဖျက်ပါ။\n\n$preview")
             .setNegativeButton("မဖျက်ပါ") { dialog, _ -> dialog.dismiss() }
-            .setPositiveButton("ဖျက်မည်") { _, _ ->
+            .setPositiveButton("ဒီတစ်ခုတည်း ဖျက်မည်") { _, _ ->
                 worker.execute {
                     val deleted = historyRepository.delete(record.id)
                     mainHandler.post {
@@ -1400,6 +1481,8 @@ class MainActivity : Activity() {
         previewButton?.alpha = if (busy) 0.6f else 1f
         transcribeButton?.isEnabled = !busy
         transcribeButton?.alpha = if (busy) 0.6f else 1f
+        whisperDownloadButton?.isEnabled = !busy && !OfflineWhisperModelRepository(this).installed()
+        whisperDownloadButton?.alpha = if (whisperDownloadButton?.isEnabled == true) 1f else 0.6f
         listenButton?.isEnabled = !busy && lastOutput != null
         listenButton?.alpha = if (listenButton?.isEnabled == true) 1f else 0.55f
         progressBar?.visibility = if (busy) View.VISIBLE else View.GONE

@@ -31,7 +31,7 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
         val styles = metadata.getJSONArray("styles")
         val centers = metadata.getJSONArray("centers")
         val bridge = Python.getInstance().getModule("nara_bridge")
-        val pieces = splitText(text)
+        val pieces = splitText(normalizePunctuation(text))
         var dataBytes = 0L
         outputFile.parentFile?.mkdirs()
         onProgress(1)
@@ -154,6 +154,24 @@ class OfflineTtsEngine(private val model: VoiceModelRepository.ModelFiles) : Aut
             }
         }
         return output
+    }
+
+    /** Keep words inside brackets, while converting unsupported punctuation into safe pauses. */
+    private fun normalizePunctuation(input: String): String {
+        var normalized = input
+        listOf('(', ')', '[', ']', '{', '}', '（', '）', '【', '】', '「', '」', '『', '』', '《', '》').forEach {
+            normalized = normalized.replace(it, ' ')
+        }
+        normalized = normalized
+            .replace("…", "။")
+            .replace(Regex("\\.{2,}"), "။")
+            .replace(Regex("[-‐‑‒–—―−]+"), "၊")
+            .replace(Regex("[;:：；]+"), "၊")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        listOf('"', '“', '”', '‘', '’', '`').forEach { normalized = normalized.replace(it.toString(), "") }
+        require(normalized.isNotEmpty()) { "ဖတ်နိုင်သော စာသား မရှိပါ။" }
+        return normalized
     }
 
     private fun splitText(input: String, limit: Int = 200): List<String> {

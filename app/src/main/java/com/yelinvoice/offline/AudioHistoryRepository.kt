@@ -100,8 +100,15 @@ class AudioHistoryRepository(context: Context) {
     /** Removes only the entry whose generated id exactly matches [id]. */
     fun delete(id: String): Boolean {
         if (!isSafeId(id)) return false
-        val entryDir = File(historyDir, id)
-        if (!entryDir.exists() || !entryDir.isDirectory) return false
+        val root = historyDir.canonicalFile
+        val entryDir = File(root, id).canonicalFile
+        if (entryDir.parentFile != root || entryDir.name != id || !entryDir.isDirectory) return false
+        val metadataFile = File(entryDir, METADATA_FILENAME)
+        val audioFile = File(entryDir, AUDIO_FILENAME)
+        if (!metadataFile.isFile || !audioFile.isFile) return false
+        val storedId = try { JSONObject(metadataFile.readText(Charsets.UTF_8)).getString("id") }
+        catch (_: Exception) { return false }
+        if (storedId != id) return false
         return deleteRecursively(entryDir)
     }
 
