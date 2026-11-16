@@ -136,13 +136,21 @@ Java_com_yelinvoice_offline_WhisperNative_transcribe(JNIEnv *env, jobject, jlong
             const char *token_text = whisper_full_get_token_text(ctx, i, j);
             if (token_text == nullptr) continue;
             std::string token(token_text);
-            if (token.empty() || token.rfind("<|", 0) == 0) continue;
+            const bool timestamp_marker = token.rfind("[_TT_", 0) == 0 && token.back() == ']';
+            if (timestamp_marker || token == "[_BEG_]" || token == "[_EOT_]") {
+                flush_phrase();
+                continue;
+            }
+            if (token.empty() || token.rfind("<|", 0) == 0 ||
+                (token.rfind("[_", 0) == 0 && token.back() == ']')) continue;
             const auto first = token.find_first_not_of(" \t\r\n");
             if (first == std::string::npos) continue;
             token = token.substr(first);
 
             const int64_t token_start = std::max<int64_t>(0, whisper_full_get_token_t0(ctx, i, j));
             const int64_t token_end = std::max<int64_t>(token_start + 1, whisper_full_get_token_t1(ctx, i, j));
+            if (phrase_start >= 0 && token_start > phrase_end + 35) flush_phrase();
+            if (phrase_start >= 0 && token_start >= phrase_start + 500) flush_phrase();
             if (phrase_start < 0) phrase_start = token_start;
             phrase += token;
             phrase_end = token_end;

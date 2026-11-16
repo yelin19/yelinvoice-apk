@@ -12,8 +12,8 @@ android {
         applicationId = "com.yelinvoice.offline"
         minSdk = 24
         targetSdk = 34
-        versionCode = 23
-        versionName = "0.23.0"
+        versionCode = 24
+        versionName = "0.24.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
