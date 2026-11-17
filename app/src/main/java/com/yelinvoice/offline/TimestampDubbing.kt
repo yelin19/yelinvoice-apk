@@ -22,7 +22,9 @@ data class TimedSpeechSegment(
 /** Parses [MM:SS - MM:SS] or [HH:MM:SS - HH:MM:SS] transcript lines. */
 object TimestampTranscriptParser {
     private const val SAMPLE_RATE = 24_000L
-    private val linePattern = Regex("^\\s*\\[?\\s*((?:\\d+:)?\\d+:\\d+(?:\\.\\d+)?)\\s*-\\s*((?:\\d+:)?\\d+(?:\\.\\d+)?)\\s*\\]?\\s*(.*?)\\s*$")
+    private val timestampDigit = "[0-9၀-၉０-９]"
+    private val timePattern = "(?:${timestampDigit}+:)?${timestampDigit}+:${timestampDigit}+(?:\\.${timestampDigit}+)?"
+    private val linePattern = Regex("^\\s*\\[?\\s*($timePattern)\\s*-\\s*($timePattern)\\s*\\]?\\s*(.*?)\\s*$")
 
     fun parse(input: String): List<TimedSpeechSegment> {
         val segments = ArrayList<TimedSpeechSegment>()
@@ -31,10 +33,10 @@ object TimestampTranscriptParser {
             trimmedInput.substring(1, trimmedInput.length - 1).trim()
         } else trimmedInput
         transcriptBody.lines().forEachIndexed { index, raw ->
-            val line = raw.trim()
+            val line = normalizeTimestampSyntax(raw)
             if (line.isEmpty() || line.startsWith("#")) return@forEachIndexed
             val match = linePattern.matchEntire(line)
-                ?: throw IllegalArgumentException("စာကြောင်း ${index + 1}: [00:00 - 00:03] စာသား ပုံစံဖြင့်ရေးပါ။")
+                ?: throw IllegalArgumentException("စာကြောင်း ${index + 1}: အချိန်ကို [00:00 - 00:05] စာသား ပုံစံဖြင့် တစ်လိုင်းစီရေးပါ။")
             val start = parseTime(match.groupValues[1], index + 1)
             val end = parseTime(match.groupValues[2], index + 1)
             val text = match.groupValues[3].trim()
@@ -47,7 +49,16 @@ object TimestampTranscriptParser {
     }
 
     private fun parseTime(value: String, lineNumber: Int): Long {
-        val parts = value.trim().split(':')
+        val normalizedDigits = buildString(value.length) {
+            value.forEach { ch ->
+                append(when (ch) {
+                    in '၀'..'၉' -> ('0'.code + ch.code - '၀'.code).toChar()
+                    in '０'..'９' -> ('0'.code + ch.code - '０'.code).toChar()
+                    else -> ch
+                })
+            }
+        }
+        val parts = normalizedDigits.trim().split(':')
         require(parts.size == 2 || parts.size == 3) {
             "စာကြောင်း $lineNumber: အချိန်ကို MM:SS သို့မဟုတ် HH:MM:SS ပုံစံဖြင့်ရေးပါ။"
         }
@@ -76,6 +87,26 @@ object TimestampTranscriptParser {
         }
         return (totalSeconds * 1000.0).roundToInt().toLong()
     }
+
+    private fun normalizeTimestampSyntax(raw: String): String = raw.trim()
+        .replace("\uFEFF", "")
+        .replace("\u200B", "")
+        .replace("\u200E", "")
+        .replace("\u200F", "")
+        .replace('\u00A0', ' ')
+        .replace('\u2009', ' ')
+        .replace('\u202F', ' ')
+        .replace('\uFF3B', '[')
+        .replace('\uFF3D', ']')
+        .replace('\uFF1A', ':')
+        .replace('\uFF0E', '.')
+        .replace('\uFF0D', '-')
+        .replace('\u2010', '-')
+        .replace('\u2011', '-')
+        .replace('\u2012', '-')
+        .replace('\u2013', '-')
+        .replace('\u2014', '-')
+        .replace('\u2212', '-')
 }
 
 /**
