@@ -365,6 +365,20 @@ class MainActivity : Activity() {
             addView(resizeHandle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
             if (timestampMode) {
                 addView(space(8), matchWidth())
+                addView(actionButton("Gemini အတွက် Prompt ကူးယူရန်", filled = false).apply {
+                    setOnClickListener {
+                        try {
+                            val prompt = this@MainActivity.assets.open("timestamp_gemini_prompt.txt")
+                                .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                            val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Yelinvoice Timestamp Prompt", prompt))
+                            toast("Prompt ကို clipboard သို့ ကူးယူပြီးပါပြီ။ Gemini ထဲတွင် paste လုပ်ပါ။")
+                        } catch (_: Exception) {
+                            toast("Prompt ကို ကူးယူမရပါ။ ထပ်မံကြိုးစားပါ။")
+                        }
+                    }
+                }, matchWidth())
+                addView(space(8), matchWidth())
                 addView(label("[00:20 - 00:23] စာသား သို့မဟုတ် 00:20-00:23 စာသား ပုံစံဖြင့်ရေးပါ။ အလွတ်လိုင်းများနှင့် စာသားတစ်ခုလုံးကို ဝိုင်းထားသော ( ) ကို လျစ်လျူရှုပါမည်။ ပထမအသံမစမီကာလနှင့် အချိန်ကွာဟချက်များကို အသံတိတ်ထားပြီး၊ စာကြောင်းရှည်လျှင် အချိန်ကွက်အတွင်း ဝင်စေရန် အမြန်နှုန်းကို အလိုအလျောက်ညှိကာ WAV တစ်ဖိုင်တည်း ထုတ်ပေးပါမည်။", 12f, mutedColor), matchWidth())
             }
         }
